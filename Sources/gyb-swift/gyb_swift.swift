@@ -102,14 +102,15 @@ struct GYBSwift: ParsableCommand {
         }
         
         // Parse variable bindings
-        var bindings: [String: Any] = [:]
-        for define in defines {
-            let parts = define.split(separator: "=", maxSplits: 1)
-            guard parts.count == 2 else {
-                throw ValidationError("Invalid binding format: \(define). Expected NAME=VALUE")
+        let bindings: [String: Any] = try Dictionary(
+            uniqueKeysWithValues: defines.map { define in
+                let parts = define.split(separator: "=", maxSplits: 1)
+                guard parts.count == 2 else {
+                    throw ValidationError("Invalid binding format: \(define). Expected NAME=VALUE")
+                }
+                return (String(parts[0]), String(parts[1]) as Any)
             }
-            bindings[String(parts[0])] = String(parts[1])
-        }
+        )
         
         // Read template
         let templateText: String
@@ -117,11 +118,8 @@ struct GYBSwift: ParsableCommand {
         
         if file == "-" {
             // Read from stdin
-            var input = ""
-            while let line = readLine(strippingNewline: false) {
-                input += line
-            }
-            templateText = input
+            templateText = AnyIterator { readLine(strippingNewline: false) }
+                .joined()
             filename = "stdin"
         } else {
             // Read from file

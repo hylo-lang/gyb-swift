@@ -101,9 +101,7 @@ struct BlockNode: ASTNode {
             context.resultText.append(contentsOf: childContext.resultText)
         } else {
             // Execute children directly
-            for child in children {
-                try child.execute(context)
-            }
+            try children.forEach { try $0.execute(context) }
         }
     }
     
@@ -113,9 +111,9 @@ struct BlockNode: ASTNode {
             result += "\n  Code: {\(code.prefix(40))\(code.count > 40 ? "..." : "")}"
         }
         result += "\n  [\n"
-        for child in children {
-            result += "    \(child.description.replacingOccurrences(of: "\n", with: "\n    "))\n"
-        }
+        result += children
+            .map { "    \($0.description.replacingOccurrences(of: "\n", with: "\n    "))\n" }
+            .joined()
         result += "  ]\n]"
         return result
     }
@@ -211,23 +209,20 @@ class ParseContext {
     ///
     /// Removes the leading % and common indentation from each line.
     private func extractCodeFromLines(_ text: String) -> String {
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
-        var result: [String] = []
-        
-        for line in lines {
-            var trimmed = String(line)
-            // Remove leading whitespace and %
-            if let percentIndex = trimmed.firstIndex(of: "%") {
-                trimmed = String(trimmed[trimmed.index(after: percentIndex)...])
+        text.split(separator: "\n", omittingEmptySubsequences: false)
+            .map { line -> String in
+                var trimmed = String(line)
+                // Remove leading whitespace and %
+                if let percentIndex = trimmed.firstIndex(of: "%") {
+                    trimmed = String(trimmed[trimmed.index(after: percentIndex)...])
+                }
+                // Remove leading space if present
+                if trimmed.first == " " {
+                    trimmed = String(trimmed.dropFirst())
+                }
+                return trimmed
             }
-            // Remove leading space if present
-            if trimmed.first == " " {
-                trimmed = String(trimmed.dropFirst())
-            }
-            result.append(trimmed)
-        }
-        
-        return result.joined(separator: "\n")
+            .joined(separator: "\n")
     }
 }
 

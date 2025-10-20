@@ -133,9 +133,7 @@ class ChildExecutor {
     }
     
     func execute(_ context: ExecutionContext) throws {
-        for child in children {
-            try child.execute(context)
-        }
+        try children.forEach { try $0.execute(context) }
     }
 }
 
@@ -170,20 +168,20 @@ private func executeSwiftCodeDynamically(
     }
     
     // Generate Swift source with bindings
-    var source = """
+    let bindingsCode = bindings
+        .map { "let \($0.key) = \(formatValue($0.value))" }
+        .joined(separator: "\n")
+    
+    let source = """
     import Foundation
     
     // Bindings
+    \(bindingsCode)
+    
+    // User code
+    \(code)
     
     """
-    
-    for (name, value) in bindings {
-        source += "let \(name) = \(formatValue(value))\n"
-    }
-    
-    source += "\n// User code\n"
-    source += code
-    source += "\n"
     
     // Write source file
     let sourceFile = tempDir.appendingPathComponent("main.swift")

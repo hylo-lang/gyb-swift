@@ -10,18 +10,11 @@ import Foundation
 /// - Postcondition: result.count equals the number of lines plus one.
 /// - Complexity: O(n) where n is the length of the text.
 func getLineStarts(_ text: String) -> [String.Index] {
-    var starts = [text.startIndex]
-    var currentIndex = text.startIndex
+    let newlineIndices = text.indices.lazy
+        .filter { text[$0] == "\n" }
+        .map { text.index(after: $0) }
     
-    while currentIndex < text.endIndex {
-        if text[currentIndex] == "\n" {
-            let nextIndex = text.index(after: currentIndex)
-            starts.append(nextIndex)
-            currentIndex = nextIndex
-        } else {
-            currentIndex = text.index(after: currentIndex)
-        }
-    }
+    var starts = [text.startIndex] + Array(newlineIndices)
     
     // Add sentinel for end if not already added
     if starts.last != text.endIndex {
