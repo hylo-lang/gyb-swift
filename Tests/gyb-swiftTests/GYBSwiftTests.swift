@@ -106,6 +106,79 @@ final class GYBSwiftTests: XCTestCase {
         XCTAssertTrue(tokens.contains { $0.kind == .gybBlockOpen })
     }
     
+    /// Tests that }% inside strings doesn't terminate code block.
+    ///
+    /// This is the critical test case that requires Swift tokenization.
+    /// Without proper tokenization, the naive scanner would incorrectly
+    /// stop at the }% inside the string literal.
+    func testCodeBlockWithDelimiterInString() {
+        let tokenizer = TemplateTokenizer(text: #"%{ let msg = "Error: }% not allowed" }%Done"#)
+        var tokens: [TemplateToken] = []
+        while let token = tokenizer.next() {
+            tokens.append(token)
+        }
+        
+        // Should have: gybBlockOpen, literal("Done")
+        XCTAssertEqual(tokens.count, 2, "Should have 2 tokens: code block and literal")
+        XCTAssertEqual(tokens[0].kind, .gybBlockOpen, "First should be code block")
+        XCTAssertTrue(tokens[0].text.contains(#""Error: }% not allowed""#), 
+                      "Should contain full string with }% inside it")
+        XCTAssertEqual(tokens[1].kind, .literal, "Second should be literal")
+        XCTAssertEqual(tokens[1].text, "Done", "Should be 'Done'")
+    }
+    
+    /// Tests that } inside strings in ${} doesn't terminate substitution.
+    ///
+    /// This verifies SwiftSyntax correctly handles dictionary/subscript syntax
+    /// where } appears in string keys.
+    func testSubstitutionWithBraceInString() {
+        let tokenizer = TemplateTokenizer(text: #"${dict["key}value"]}Done"#)
+        var tokens: [TemplateToken] = []
+        while let token = tokenizer.next() {
+            tokens.append(token)
+        }
+        
+        // Should have: substitutionOpen, literal("Done")
+        XCTAssertEqual(tokens.count, 2, "Should have 2 tokens: substitution and literal")
+        XCTAssertEqual(tokens[0].kind, .substitutionOpen, "First should be substitution")
+        XCTAssertTrue(tokens[0].text.contains(#""key}value""#), 
+                      "Should contain full string with } inside it")
+        XCTAssertEqual(tokens[1].kind, .literal, "Second should be literal")
+        XCTAssertEqual(tokens[1].text, "Done", "Should be 'Done'")
+    }
+    
+    /// Tests multiple nested strings with delimiters.
+    func testNestedStringsWithDelimiters() {
+        let text = #"%{ let a = "first }% here"; let b = "second }% there" }%"#
+        let tokenizer = TemplateTokenizer(text: text)
+        var tokens: [TemplateToken] = []
+        while let token = tokenizer.next() {
+            tokens.append(token)
+        }
+        
+        XCTAssertEqual(tokens.count, 1, "Should be one complete code block")
+        XCTAssertEqual(tokens[0].kind, .gybBlockOpen)
+        XCTAssertTrue(tokens[0].text.contains("first }% here"))
+        XCTAssertTrue(tokens[0].text.contains("second }% there"))
+    }
+    
+    /// Tests multiline string literals with delimiters.
+    func testMultilineStringWithDelimiter() {
+        let text = #"""
+        %{ let msg = """
+        Error message with }% in it
+        """ }%Done
+        """#
+        let tokenizer = TemplateTokenizer(text: text)
+        var tokens: [TemplateToken] = []
+        while let token = tokenizer.next() {
+            tokens.append(token)
+        }
+        
+        // SwiftParser should handle multiline strings correctly
+        XCTAssertGreaterThanOrEqual(tokens.count, 1, "Should tokenize without crash")
+    }
+    
     /// Tests tokenizing % code lines.
     func testTokenizeCodeLines() {
         let tokenizer = TemplateTokenizer(text: "% let x = 10\n")

@@ -109,25 +109,24 @@ class TemplateTokenizer {
     }
     
     /// Handles ${...} substitution.
+    ///
+    /// Uses Swift tokenization to correctly handle cases where `}` appears
+    /// inside strings, e.g., `${dict["key}value"]}`.
     private func handleSubstitution(startPos: String.Index) -> TemplateToken? {
         // Skip ${
-        position = text.index(position, offsetBy: 2)
+        let codeStart = text.index(position, offsetBy: 2)
         
-        // Find matching }
-        var depth = 1
-        while position < text.endIndex {
-            let char = text[position]
-            if char == "{" {
-                depth += 1
-            } else if char == "}" {
-                depth -= 1
-                if depth == 0 {
-                    position = text.index(after: position)
-                    let tokenText = String(text[startPos..<position])
-                    return TemplateToken(kind: .substitutionOpen, text: tokenText, startIndex: startPos)
-                }
-            }
-            position = text.index(after: position)
+        // Use Swift tokenizer to find the real closing }
+        // This handles strings, comments, and nested braces correctly
+        let closeIndex = tokenizeSwiftToUnmatchedCloseCurly(
+            sourceText: text,
+            start: codeStart
+        )
+        
+        if closeIndex < text.endIndex {
+            position = text.index(after: closeIndex)
+            let tokenText = String(text[startPos..<position])
+            return TemplateToken(kind: .substitutionOpen, text: tokenText, startIndex: startPos)
         }
         
         // Unclosed substitution - treat as literal
@@ -136,30 +135,34 @@ class TemplateTokenizer {
     }
     
     /// Handles %{...}% code block.
+    ///
+    /// Uses Swift tokenization to correctly handle cases where `}%` appears
+    /// inside strings, e.g., `%{ let msg = "Error: }% not allowed" }%`.
     private func handleCodeBlock(startPos: String.Index) -> TemplateToken? {
         // Skip %{
-        position = text.index(position, offsetBy: 2)
+        let codeStart = text.index(position, offsetBy: 2)
         
-        // Find }%
-        while position < text.endIndex {
-            let char = text[position]
-            if char == "}" {
-                let nextPos = text.index(after: position)
-                if nextPos < text.endIndex && text[nextPos] == "%" {
-                    // Found }%
-                    let tokenText = String(text[startPos...nextPos])
-                    position = text.index(after: nextPos)
-                    // Skip trailing newline if present
-                    if position < text.endIndex && text[position].isNewline {
-                        position = text.index(after: position)
-                    }
-                    return TemplateToken(kind: .gybBlockOpen, text: tokenText, startIndex: startPos)
+        // Use Swift tokenizer to find the real closing }
+        let closeIndex = tokenizeSwiftToUnmatchedCloseCurly(
+            sourceText: text,
+            start: codeStart
+        )
+        
+        if closeIndex < text.endIndex {
+            // Check if this is followed by %
+            let afterClose = text.index(after: closeIndex)
+            if afterClose < text.endIndex && text[afterClose] == "%" {
+                position = text.index(after: afterClose)
+                // Skip trailing newline if present
+                if position < text.endIndex && text[position].isNewline {
+                    position = text.index(after: position)
                 }
+                let tokenText = String(text[startPos..<position])
+                return TemplateToken(kind: .gybBlockOpen, text: tokenText, startIndex: startPos)
             }
-            position = text.index(after: position)
         }
         
-        // Unclosed block
+        // Unclosed block - treat as literal
         position = text.index(after: startPos)
         return TemplateToken(kind: .literal, text: "%", startIndex: startPos)
     }
@@ -251,6 +254,8 @@ class TemplateTokenizer {
 /// Tokenizes Swift code to find the matching close curly brace.
 ///
 /// Uses SwiftSyntax to parse Swift code and track brace nesting.
+/// This properly handles strings, comments, and other Swift syntax where
+/// braces might appear but shouldn't be counted as code delimiters.
 ///
 /// - Parameters:
 ///   - sourceText: The text containing Swift code.
@@ -268,7 +273,7 @@ func tokenizeSwiftToUnmatchedCloseCurly(
     // Walk the syntax tree looking for braces
     class BraceVisitor: SyntaxVisitor {
         var nesting = 0
-        var closeBracePosition: AbsolutePosition?
+        var closeBraceOffset: Int?
         
         override func visit(_ token: TokenSyntax) -> SyntaxVisitorContinueKind {
             if token.tokenKind == .leftBrace {
@@ -276,7 +281,8 @@ func tokenizeSwiftToUnmatchedCloseCurly(
             } else if token.tokenKind == .rightBrace {
                 nesting -= 1
                 if nesting < 0 {
-                    closeBracePosition = token.position
+                    // Found unmatched closing brace - record offset in substring
+                    closeBraceOffset = token.position.utf8Offset
                     return .skipChildren
                 }
             }
@@ -287,15 +293,26 @@ func tokenizeSwiftToUnmatchedCloseCurly(
     let visitor = BraceVisitor(viewMode: .all)
     visitor.walk(source)
     
-    if let pos = visitor.closeBracePosition {
-        // Convert UTF8 offset to String.Index
-        let utf8Offset = pos.utf8Offset
-        if let index = sourceText.utf8.index(
-            sourceText.utf8.startIndex,
-            offsetBy: utf8Offset,
-            limitedBy: sourceText.utf8.endIndex
+    if let offset = visitor.closeBraceOffset {
+        // The offset is relative to the substring, convert to absolute index
+        if let relativeIndex = substring.utf8.index(
+            substring.utf8.startIndex,
+            offsetBy: offset,
+            limitedBy: substring.utf8.endIndex
         ) {
-            return String.Index(index, within: sourceText) ?? sourceText.endIndex
+            // Convert UTF8 index back to String.Index in original text
+            let distanceInSubstring = substring.utf8.distance(
+                from: substring.utf8.startIndex,
+                to: relativeIndex
+            )
+            
+            if let absoluteIndex = sourceText.index(
+                start,
+                offsetBy: distanceInSubstring,
+                limitedBy: sourceText.endIndex
+            ) {
+                return absoluteIndex
+            }
         }
     }
     
