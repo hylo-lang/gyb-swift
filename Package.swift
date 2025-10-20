@@ -5,8 +5,10 @@ import PackageDescription
 
 let package = Package(
     name: "gyb-swift",
+    platforms: [.macOS(.v13)],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.2.0"),
+        .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "600.0.0"),
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
@@ -15,7 +17,13 @@ let package = Package(
             name: "gyb-swift",
             dependencies: [
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
+                .product(name: "SwiftSyntax", package: "swift-syntax"),
+                .product(name: "SwiftParser", package: "swift-syntax"),
             ]
+        ),
+        .testTarget(
+            name: "gyb-swiftTests",
+            dependencies: ["gyb-swift"]
         ),
     ]
 )

@@ -1,0 +1,22 @@
+{
+  "configurations": [
+    {
+      "type": "lldb",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:gyb-swift}",
+      "name": "Debug gyb-swift",
+      "program": "${workspaceFolder:gyb-swift}/.build/debug/gyb-swift",
+      "preLaunchTask": "swift: Build Debug gyb-swift"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:gyb-swift}",
+      "name": "Release gyb-swift",
+      "program": "${workspaceFolder:gyb-swift}/.build/release/gyb-swift",
+      "preLaunchTask": "swift: Build Release gyb-swift"
+    }
+  ]
+}
