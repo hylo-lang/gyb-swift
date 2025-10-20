@@ -24,24 +24,17 @@ struct TemplateToken {
 
 // MARK: - Template Tokenization
 
-/// Tokenizes template text into a sequence of tokens.
-///
-/// Recognizes literal text, substitutions, code blocks, code lines, and symbols.
+/// Tokenizes template text into literal text, substitutions, code blocks, code lines, and symbols.
 class TemplateTokenizer {
     private let text: String
     private var position: String.Index
     
-    /// Creates a tokenizer for template text.
-    ///
-    /// - Parameter text: The template to tokenize.
     init(text: String) {
         self.text = text
         self.position = text.startIndex
     }
     
-    /// Returns the next token.
-    ///
-    /// - Returns: The next token, or nil if at end of text.
+    /// Returns the next token, or nil when exhausted.
     func next() -> TemplateToken? {
         guard position < text.endIndex else { return nil }
         
@@ -108,10 +101,7 @@ class TemplateTokenizer {
         }
     }
     
-    /// Handles ${...} substitution.
-    ///
-    /// Uses Swift tokenization to correctly handle cases where `}` appears
-    /// inside strings, e.g., `${dict["key}value"]}`.
+    /// Handles ${...} substitution using Swift tokenization for `}` in strings.
     private func handleSubstitution(startPos: String.Index) -> TemplateToken? {
         // Skip ${
         let codeStart = text.index(position, offsetBy: 2)
@@ -134,10 +124,7 @@ class TemplateTokenizer {
         return TemplateToken(kind: .literal, text: "$", startIndex: startPos)
     }
     
-    /// Handles %{...}% code block.
-    ///
-    /// Uses Swift tokenization to correctly handle cases where `}%` appears
-    /// inside strings, e.g., `%{ let msg = "Error: }% not allowed" }%`.
+    /// Handles %{...}% code block using Swift tokenization for `}%` in strings.
     private func handleCodeBlock(startPos: String.Index) -> TemplateToken? {
         // Skip %{
         let codeStart = text.index(position, offsetBy: 2)
@@ -251,16 +238,8 @@ class TemplateTokenizer {
 
 // MARK: - Swift Tokenization
 
-/// Tokenizes Swift code to find the matching close curly brace.
-///
-/// Uses SwiftSyntax to parse Swift code and track brace nesting.
-/// This properly handles strings, comments, and other Swift syntax where
-/// braces might appear but shouldn't be counted as code delimiters.
-///
-/// - Parameters:
-///   - sourceText: The text containing Swift code.
-///   - start: The index where tokenization begins.
-/// - Returns: Index of the unmatched close brace or end of text.
+/// Returns the index of the first unmatched `}` in Swift code starting at `start`,
+/// or `sourceText.endIndex` if none exists, using SwiftSyntax to ignore braces in strings and comments.
 func tokenizeSwiftToUnmatchedCloseCurly(
     sourceText: String,
     start: String.Index

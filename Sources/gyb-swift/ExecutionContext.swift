@@ -2,10 +2,7 @@ import Foundation
 
 // MARK: - Execution Context
 
-/// Runtime context for executing template code.
-///
-/// Maintains variable bindings, accumulated output text, and line directives
-/// for error reporting.
+/// Maintains variable bindings, output text, and line directives for executing template code.
 class ExecutionContext {
     /// The accumulated output text.
     var resultText: [String] = []
@@ -13,9 +10,7 @@ class ExecutionContext {
     /// Variable bindings available to template code.
     var bindings: [String: Any]
     
-    /// Format string for line directives.
-    ///
-    /// Expects %(file)s and %(line)d placeholders.
+    /// Format string for line directives with %(file)s and %(line)d placeholders.
     let lineDirective: String
     
     /// The current template filename.
@@ -27,12 +22,6 @@ class ExecutionContext {
     /// Child nodes available to block code via __children__.
     private var children: [ASTNode]?
     
-    /// Creates an execution context.
-    ///
-    /// - Parameters:
-    ///   - filename: Template filename for diagnostics.
-    ///   - lineDirective: Format for line directives.
-    ///   - bindings: Initial variable bindings.
     init(
         filename: String = "stdin",
         lineDirective: String = "//# sourceLocation(file: \"%(file)s\", line: %(line)d)",
@@ -43,10 +32,7 @@ class ExecutionContext {
         self.bindings = bindings
     }
     
-    /// Creates a child context for executing a block's children.
-    ///
-    /// - Parameter children: The child nodes.
-    /// - Returns: New context sharing bindings but with __children__ available.
+    /// Returns a new context sharing bindings but with __children__ available.
     func createChildContext(children: [ASTNode]) -> ExecutionContext {
         let child = ExecutionContext(
             filename: filename,
@@ -57,9 +43,7 @@ class ExecutionContext {
         return child
     }
     
-    /// Emits a line directive if needed.
-    ///
-    /// - Parameter line: The source line number.
+    /// Emits a line directive for `line` if needed.
     private func emitLineDirective(_ line: Int) {
         guard !lineDirective.isEmpty && line != lastEmittedLine else { return }
         
@@ -71,15 +55,7 @@ class ExecutionContext {
         lastEmittedLine = line
     }
     
-    /// Executes Swift code.
-    ///
-    /// Compiles and runs the code with access to all bindings.
-    ///
-    /// - Parameters:
-    ///   - code: Swift code to execute.
-    ///   - line: Source line number for diagnostics.
-    /// - Throws: If code execution fails.
-    /// - Complexity: Depends on code complexity; compilation is O(n) in code length.
+    /// Compiles and executes Swift `code` with access to bindings.
     func executeCode(_ code: String, atLine line: Int) throws {
         emitLineDirective(line)
         
@@ -101,13 +77,7 @@ class ExecutionContext {
         try executeSwiftCodeDynamically(code, bindings: bindings, context: self)
     }
     
-    /// Evaluates a Swift expression.
-    ///
-    /// - Parameters:
-    ///   - expression: Swift expression to evaluate.
-    ///   - line: Source line number for diagnostics.
-    /// - Returns: The result of evaluating the expression.
-    /// - Throws: If evaluation fails.
+    /// Returns the result of evaluating Swift `expression`.
     func evaluateExpression(_ expression: String, atLine line: Int) throws -> Any {
         emitLineDirective(line)
         return try evaluateSwiftExpression(expression, bindings: bindings)
@@ -116,9 +86,7 @@ class ExecutionContext {
 
 // MARK: - Child Executor
 
-/// Helper for executing child nodes from block code.
-///
-/// Allows block code to call __children__[0].execute(__context__).
+/// Allows block code to execute children via __children__[0].execute(__context__).
 class ChildExecutor {
     let children: [ASTNode]
     let context: ExecutionContext
@@ -139,20 +107,7 @@ class ChildExecutor {
 
 // MARK: - Dynamic Swift Execution
 
-/// Executes Swift code dynamically by compiling and running it.
-///
-/// This is a simplified implementation. A production version would:
-/// - Create a temporary Swift source file
-/// - Include all bindings as variables
-/// - Compile using swiftc
-/// - Execute the resulting binary
-/// - Capture output and return values
-///
-/// - Parameters:
-///   - code: Swift code to execute.
-///   - bindings: Available variables.
-///   - context: Execution context for output.
-/// - Throws: If compilation or execution fails.
+/// Compiles and executes Swift `code` by creating a temporary file, compiling with swiftc, and running it.
 private func executeSwiftCodeDynamically(
     _ code: String,
     bindings: [String: Any],
@@ -225,13 +180,7 @@ private func executeSwiftCodeDynamically(
     }
 }
 
-/// Evaluates a Swift expression dynamically.
-///
-/// - Parameters:
-///   - expression: Swift expression to evaluate.
-///   - bindings: Available variables.
-/// - Returns: The evaluated result.
-/// - Throws: If evaluation fails.
+/// Returns the result of evaluating Swift `expression`.
 private func evaluateSwiftExpression(
     _ expression: String,
     bindings: [String: Any]
@@ -245,10 +194,7 @@ private func evaluateSwiftExpression(
     return tempContext.resultText.joined()
 }
 
-/// Formats a value as Swift source code.
-///
-/// - Parameter value: The value to format.
-/// - Returns: Swift source representation.
+/// Returns Swift source code representation of `value`.
 private func formatValue(_ value: Any) -> String {
     switch value {
     case let s as String:
@@ -289,17 +235,7 @@ enum GYBError: Error, CustomStringConvertible {
 
 // MARK: - Template Execution
 
-/// Executes a parsed template AST.
-///
-/// Runs the template with the given bindings and returns the generated text.
-///
-/// - Parameters:
-///   - ast: The parsed template AST.
-///   - filename: Template filename for diagnostics.
-///   - lineDirective: Format for line directives.
-///   - bindings: Variable bindings for template code.
-/// - Returns: The generated output text.
-/// - Throws: If execution fails.
+/// Returns the generated text from executing `ast` with `bindings`.
 func executeTemplate(
     _ ast: BlockNode,
     filename: String = "stdin",

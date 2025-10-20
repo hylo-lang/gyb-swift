@@ -90,11 +90,7 @@ struct GYBSwift: ParsableCommand {
     @Flag(help: "Dump the parsed template AST to stdout")
     var dump: Bool = false
     
-    /// Runs the GYB processor.
-    ///
     /// Reads the template, parses it, executes it with bindings, and writes output.
-    ///
-    /// - Throws: If template processing fails.
     mutating func run() throws {
         if test {
             try runTests()

@@ -2,39 +2,18 @@ import Foundation
 
 // MARK: - String Utilities
 
-/// Returns line start indices for the text.
-///
-/// The returned array contains the start index of each line in the text,
-/// plus a sentinel index for the end of the string.
-///
-/// - Postcondition: result.count equals the number of lines plus one.
-/// - Complexity: O(n) where n is the length of the text.
+/// Returns the start of each line in `text` followed by `text.endIndex`.
 func getLineStarts(_ text: String) -> [String.Index] {
-    let newlineIndices = text.indices.lazy
-        .filter { text[$0] == "\n" }
-        .map { text.index(after: $0) }
-    
-    var starts = [text.startIndex] + Array(newlineIndices)
-    
-    // Add sentinel for end if not already added
-    if starts.last != text.endIndex {
-        starts.append(text.endIndex)
-    }
-    
-    return starts
+    text.split(omittingEmptySubsequences: false) { $0.isNewline }
+        .map(\.startIndex) + [text.endIndex]
 }
 
-/// Removes trailing newline from the text if present.
-///
-/// - Returns: text with trailing newline removed, or text unchanged.
+/// Returns `text` without its trailing newline, if any.
 func stripTrailingNewline(_ text: String) -> String {
     text.hasSuffix("\n") ? String(text.dropLast()) : text
 }
 
-/// Splits text into lines, each preserving its trailing newline.
-///
-/// When concatenated, the result is the original text, possibly with a single
-/// appended newline.
+/// Returns lines from `text`, each with its trailing newline.
 func splitLines(_ text: String) -> [String] {
     text.split(separator: "\n", omittingEmptySubsequences: false).map { $0 + "\n" }
 }
