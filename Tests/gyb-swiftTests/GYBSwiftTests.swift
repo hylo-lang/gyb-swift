@@ -247,22 +247,11 @@ final class GYBSwiftTests: XCTestCase {
     }
     
     /// Tests substitution with bound variable.
-    ///
-    /// Note: This test demonstrates the limitation of the current implementation.
-    /// Bindings work when they can be passed to the compiled Swift code.
     func testSubstitutionWithSimpleBinding() throws {
         let text = "x = ${x}"
         let ast = try parseTemplate(filename: "test", text: text)
-        
-        // This may fail with current implementation due to scope issues
-        // but demonstrates the intended functionality
-        do {
-            let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: ["x": 42])
-            XCTAssertTrue(result.contains("42"), "Result should contain '42'")
-        } catch {
-            print("Note: Dynamic execution has known limitations - \(error)")
-            throw XCTSkip("Dynamic Swift execution with bindings not fully supported")
-        }
+        let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: ["x": 42])
+        XCTAssertTrue(result.contains("42"), "Result should contain '42'")
     }
     
     /// Tests empty template.
@@ -401,20 +390,15 @@ final class GYBIntegrationTests: XCTestCase {
         """
         
         let ast = try parseTemplate(filename: "test.gyb", text: text)
+        let result = try executeTemplate(
+            ast,
+            filename: "test.gyb",
+            lineDirective: "",
+            bindings: ["count": 42]
+        )
         
-        do {
-            let result = try executeTemplate(
-                ast,
-                filename: "test.gyb",
-                lineDirective: "",
-                bindings: ["count": 42]
-            )
-            
-            XCTAssertTrue(result.contains("struct Example"))
-            XCTAssertTrue(result.contains("count"))
-        } catch {
-            throw XCTSkip("Dynamic execution limitations: \(error)")
-        }
+        XCTAssertTrue(result.contains("struct Example"))
+        XCTAssertTrue(result.contains("42"))
     }
     
     /// Tests that the template structure is preserved.

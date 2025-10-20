@@ -255,6 +255,11 @@ func tokenizeSwiftToUnmatchedCloseCurly(
         var closeBraceOffset: Int?
         
         override func visit(_ token: TokenSyntax) -> SyntaxVisitorContinueKind {
+            // If we already found the close brace, stop walking
+            if closeBraceOffset != nil {
+                return .skipChildren
+            }
+            
             if token.tokenKind == .leftBrace {
                 nesting += 1
             } else if token.tokenKind == .rightBrace {
@@ -272,26 +277,23 @@ func tokenizeSwiftToUnmatchedCloseCurly(
     let visitor = BraceVisitor(viewMode: .all)
     visitor.walk(source)
     
-    if let offset = visitor.closeBraceOffset {
-        // The offset is relative to the substring, convert to absolute index
-        if let relativeIndex = substring.utf8.index(
-            substring.utf8.startIndex,
-            offsetBy: offset,
-            limitedBy: substring.utf8.endIndex
-        ) {
-            // Convert UTF8 index back to String.Index in original text
-            let distanceInSubstring = substring.utf8.distance(
-                from: substring.utf8.startIndex,
-                to: relativeIndex
-            )
-            
-            if let absoluteIndex = sourceText.index(
-                start,
-                offsetBy: distanceInSubstring,
-                limitedBy: sourceText.endIndex
-            ) {
-                return absoluteIndex
+    if let utf8Offset = visitor.closeBraceOffset {
+        // Convert UTF8 offset to character offset in substring
+        // Count characters up to the UTF8 offset
+        var charCount = 0
+        var currentUTF8Offset = 0
+        
+        for char in substring {
+            if currentUTF8Offset >= utf8Offset {
+                break
             }
+            currentUTF8Offset += char.utf8.count
+            charCount += 1
+        }
+        
+        // Apply character offset from start in original text
+        if let absoluteIndex = sourceText.index(start, offsetBy: charCount, limitedBy: sourceText.endIndex) {
+            return absoluteIndex
         }
     }
     
