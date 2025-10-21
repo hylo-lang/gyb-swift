@@ -84,16 +84,14 @@ struct BlockNode: ASTNode {
     }
     
     var description: String {
-        var result = "Block: ["
-        if let code = code {
-            result += "\n  Code: {\(code.prefix(40))\(code.count > 40 ? "..." : "")}"
-        }
-        result += "\n  [\n"
-        result += children
-            .map { "    \($0.description.replacingOccurrences(of: "\n", with: "\n    "))\n" }
-            .joined()
-        result += "  ]\n]"
-        return result
+        let parts = [
+            "Block: [",
+            code.map { "\n  Code: {\($0.prefix(40))\($0.count > 40 ? "..." : "")}" } ?? "",
+            "\n  [\n",
+            children.map { "    \($0.description.replacingOccurrences(of: "\n", with: "\n    "))\n" }.joined(),
+            "  ]\n]"
+        ]
+        return parts.joined()
     }
 }
 
@@ -176,17 +174,8 @@ class ParseContext {
     /// Returns executable code from %-lines with leading % and indentation removed.
     private func extractCodeFromLines(_ text: String) -> String {
         text.split(omittingEmptySubsequences: false) { $0.isNewline }
-            .map { line -> String in
-                var trimmed = String(line)
-                // Remove leading whitespace and %
-                if let percentIndex = trimmed.firstIndex(of: "%") {
-                    trimmed = String(trimmed[trimmed.index(after: percentIndex)...])
-                }
-                // Remove leading space if present
-                if trimmed.first == " " {
-                    trimmed = String(trimmed.dropFirst())
-                }
-                return trimmed
+            .map { line in
+                line.drop { $0 != "%" }.dropFirst().drop(while: \.isWhitespace)
             }
             .joined(separator: "\n")
     }
