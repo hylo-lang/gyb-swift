@@ -175,8 +175,8 @@ class TemplateTokenizer {
         // Skip %
         position = text.index(after: position)
         
-        // Skip optional space after %
-        if position < text.endIndex && text[position] == " " {
+        // Skip optional whitespace after %
+        while position < text.endIndex && (text[position] == " " || text[position] == "\t") {
             position = text.index(after: position)
         }
         
