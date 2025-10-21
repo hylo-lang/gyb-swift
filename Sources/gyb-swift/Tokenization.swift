@@ -25,7 +25,9 @@ struct TemplateToken {
 // MARK: - Template Tokenization
 
 /// Tokenizes template text into literal text, substitutions, code blocks, code lines, and symbols.
-class TemplateTokenizer {
+// Note: The Python version uses a complex regex (tokenize_re). The Swift version uses
+// a character-by-character state machine which is more maintainable and handles Swift syntax correctly.
+struct TemplateTokenizer {
     private let text: String
     private var position: String.Index
     
@@ -35,7 +37,7 @@ class TemplateTokenizer {
     }
     
     /// Returns the next token, or nil when exhausted.
-    func next() -> TemplateToken? {
+    mutating func next() -> TemplateToken? {
         guard position < text.endIndex else { return nil }
         
         let startPos = position
@@ -52,7 +54,7 @@ class TemplateTokenizer {
     }
     
     /// Handles $ character (substitution or escaped $).
-    private func handleDollar(startPos: String.Index) -> TemplateToken? {
+    private mutating func handleDollar(startPos: String.Index) -> TemplateToken? {
         let nextPos = text.index(after: position)
         guard nextPos < text.endIndex else {
             position = text.endIndex
@@ -76,7 +78,7 @@ class TemplateTokenizer {
     }
     
     /// Handles % character (code lines, blocks, or escaped %).
-    private func handlePercent(startPos: String.Index) -> TemplateToken? {
+    private mutating func handlePercent(startPos: String.Index) -> TemplateToken? {
         let nextPos = text.index(after: position)
         guard nextPos < text.endIndex else {
             position = text.endIndex
@@ -102,7 +104,7 @@ class TemplateTokenizer {
     }
     
     /// Handles ${...} substitution using Swift tokenization for `}` in strings.
-    private func handleSubstitution(startPos: String.Index) -> TemplateToken? {
+    private mutating func handleSubstitution(startPos: String.Index) -> TemplateToken? {
         // Skip ${
         let codeStart = text.index(position, offsetBy: 2)
         
@@ -125,7 +127,7 @@ class TemplateTokenizer {
     }
     
     /// Handles %{...}% code block using Swift tokenization for `}%` in strings.
-    private func handleCodeBlock(startPos: String.Index) -> TemplateToken? {
+    private mutating func handleCodeBlock(startPos: String.Index) -> TemplateToken? {
         // Skip %{
         let codeStart = text.index(position, offsetBy: 2)
         
@@ -155,7 +157,7 @@ class TemplateTokenizer {
     }
     
     /// Handles % code lines.
-    private func handleCodeLine(startPos: String.Index) -> TemplateToken? {
+    private mutating func handleCodeLine(startPos: String.Index) -> TemplateToken? {
         // Skip initial whitespace at start of line
         var lineStart = startPos
         while lineStart > text.startIndex {
@@ -226,7 +228,7 @@ class TemplateTokenizer {
     }
     
     /// Handles literal text.
-    private func handleLiteral(startPos: String.Index) -> TemplateToken? {
+    private mutating func handleLiteral(startPos: String.Index) -> TemplateToken? {
         var endPos = position
         
         // Read until we hit $ or %
