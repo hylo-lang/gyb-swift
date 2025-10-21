@@ -146,10 +146,87 @@ class ParseContext {
             case .gybLines:
                 // Parse %-lines
                 let code = extractCodeFromLines(token.text)
-                nodes.append(CodeNode(code: code, line: line))
+                
+                // Check if this line has an unmatched opening brace
+                let openBraces = code.filter { $0 == "{" }.count
+                let closeBraces = code.filter { $0 == "}" }.count
+                
+                if openBraces > closeBraces {
+                    // This line opens a block - collect children until % }
+                    var blockChildren: [ASTNode] = []
+                    
+                    while let nextToken = tokenIterator.next() {
+                        advance(to: nextToken.startIndex)
+                        let childLine = currentLine
+                        
+                        if nextToken.kind == .gybLinesClose {
+                            // Found closing % }
+                            break
+                        }
+                        
+                        // Parse child token
+                        switch nextToken.kind {
+                        case .literal:
+                            if !nextToken.text.isEmpty {
+                                blockChildren.append(LiteralNode(text: nextToken.text, line: childLine))
+                            }
+                        case .substitutionOpen:
+                            let expr = String(nextToken.text.dropFirst(2).dropLast())
+                            blockChildren.append(SubstitutionNode(expression: expr, line: childLine))
+                        case .gybLines:
+                            // Check if this nested line also has unmatched braces
+                            let childCode = extractCodeFromLines(nextToken.text)
+                            let childOpenBraces = childCode.filter { $0 == "{" }.count
+                            let childCloseBraces = childCode.filter { $0 == "}" }.count
+                            
+                            if childOpenBraces > childCloseBraces {
+                                // Nested block - recursively collect its children
+                                var nestedChildren: [ASTNode] = []
+                                while let nestedToken = tokenIterator.next() {
+                                    advance(to: nestedToken.startIndex)
+                                    if nestedToken.kind == .gybLinesClose {
+                                        break
+                                    }
+                                    // Simple parsing of nested children (could be made recursive)
+                                    switch nestedToken.kind {
+                                    case .literal:
+                                        if !nestedToken.text.isEmpty {
+                                            nestedChildren.append(LiteralNode(text: nestedToken.text, line: currentLine))
+                                        }
+                                    case .substitutionOpen:
+                                        let expr = String(nestedToken.text.dropFirst(2).dropLast())
+                                        nestedChildren.append(SubstitutionNode(expression: expr, line: currentLine))
+                                    case .symbol:
+                                        nestedChildren.append(LiteralNode(text: String(nestedToken.text.first!), line: currentLine))
+                                    default:
+                                        break
+                                    }
+                                }
+                                blockChildren.append(BlockNode(code: childCode, children: nestedChildren, line: childLine))
+                            } else {
+                                blockChildren.append(CodeNode(code: childCode, line: childLine))
+                            }
+                        case .gybBlockOpen:
+                            let blockCode = String(nextToken.text.dropFirst(2).dropLast(2))
+                            blockChildren.append(CodeNode(code: blockCode, line: childLine))
+                        case .symbol:
+                            let char = String(nextToken.text.first!)
+                            blockChildren.append(LiteralNode(text: char, line: childLine))
+                        default:
+                            break
+                        }
+                    }
+                    
+                    // Create block with control code and children
+                    nodes.append(BlockNode(code: code, children: blockChildren, line: line))
+                } else {
+                    // Regular code line without block structure
+                    nodes.append(CodeNode(code: code, line: line))
+                }
                 
             case .gybLinesClose:
-                // End marker - handled by block parsing
+                // End marker - should be handled by block parsing above
+                // If we see it here, it's unmatched
                 break
                 
             case .gybBlockOpen:

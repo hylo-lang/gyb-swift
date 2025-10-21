@@ -630,29 +630,61 @@ func integration_realisticTemplate() throws {
     #expect(result.contains("42"))
 }
 
-@Test("execute template with control flow and loops")
-// Python execute_template doctest: template with % if/for and ${} substitutions
-// Note: Swift doesn't support dynamic control flow like Python's eval/exec
-// This test demonstrates the limitation
-func execute_pythonDoctest1() throws {
+@Test("execute Swift template with control flow using % }")
+// Swift templates use Swift syntax with unmatched braces
+func execute_swiftControlFlow() throws {
     let text = """
-Nothing
-% if x:
-%    for i in range(3):
+% for i in 0..<3 {
 ${i}
-%    end
-% else:
-THIS SHOULD NOT APPEAR IN THE OUTPUT
+% }
 """
     
-    // Swift can parse the template but can't execute Python-style control flow
     let ast = try parseTemplate(filename: "test.gyb", text: text)
+    let result = try executeTemplate(
+        ast,
+        filename: "test.gyb",
+        lineDirective: "",
+        bindings: [:]
+    )
     
-    // The AST should be created successfully
-    #expect(ast.children.count > 0)
+    // Should execute the loop and produce 0, 1, 2
+    #expect(result.contains("0"))
+    #expect(result.contains("1"))
+    #expect(result.contains("2"))
+}
+
+@Test("execute template with if control flow")
+func execute_swiftIf() throws {
+    let text = """
+% let x = 5
+% if x > 3 {
+large
+% }
+"""
     
-    // Note: Actual execution with loops would require implementing Swift's
-    // control flow, which the current dynamic execution doesn't support
+    let ast = try parseTemplate(filename: "test", text: text)
+    let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
+    
+    #expect(result.contains("large"))
+}
+
+@Test("execute template with nested control flow")
+func execute_nestedControlFlow() throws {
+    let text = """
+% for x in 1...2 {
+%   for y in 1...2 {
+(${x},${y})
+%   }
+% }
+"""
+    
+    let ast = try parseTemplate(filename: "test", text: text)
+    let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
+    
+    #expect(result.contains("(1,1)"))
+    #expect(result.contains("(1,2)"))
+    #expect(result.contains("(2,1)"))
+    #expect(result.contains("(2,2)"))
 }
 
 @Test("template structure is preserved")

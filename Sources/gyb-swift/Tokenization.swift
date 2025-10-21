@@ -180,13 +180,27 @@ class TemplateTokenizer {
             position = text.index(after: position)
         }
         
-        // Check for %end
+        // Check for % } (closing brace line - Swift's equivalent to Python's %end)
         let remaining = String(text[position...])
+        if remaining.hasPrefix("}") {
+            let endPos = text.index(after: position)
+            // Check it's followed by whitespace, comment, or end of line
+            if endPos >= text.endIndex || text[endPos].isWhitespace || text[endPos] == "#" || text[endPos].isNewline {
+                // Find end of line
+                while position < text.endIndex && !text[position].isNewline {
+                    position = text.index(after: position)
+                }
+                if position < text.endIndex {
+                    position = text.index(after: position)
+                }
+                return TemplateToken(kind: .gybLinesClose, text: "% }", startIndex: startPos)
+            }
+        }
+        
+        // Also support %end for compatibility with Python templates
         if remaining.hasPrefix("end") {
             let endPos = text.index(position, offsetBy: 3)
-            // Check it's followed by whitespace or end
             if endPos >= text.endIndex || text[endPos].isWhitespace || text[endPos] == "#" {
-                // Find end of line
                 while position < text.endIndex && !text[position].isNewline {
                     position = text.index(after: position)
                 }
