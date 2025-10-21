@@ -238,6 +238,115 @@ final class GYBSwiftTests: XCTestCase {
         XCTAssertTrue(tokens[0].text.contains("second }% there"))
     }
     
+    /// Tests that SwiftSyntax parser handles invalid/incomplete Swift gracefully.
+    ///
+    /// This is critical because sourceText[start...] often contains template text
+    /// after the Swift code, making it syntactically invalid. SwiftSyntax Parser
+    /// is designed to be resilient (for LSP use) and handles this correctly.
+    func testParserResilientWithInvalidSwift() {
+        // Test case: valid Swift code followed by template text
+        // When parsing ${count}, we actually parse "count}Done" which is invalid Swift
+        let tokenizer = TemplateTokenizer(text: "${count}Done")
+        var tokens: [TemplateToken] = []
+        while let token = tokenizer.next() {
+            tokens.append(token)
+        }
+        
+        XCTAssertEqual(tokens.count, 2, "Should correctly parse despite invalid Swift")
+        XCTAssertEqual(tokens[0].kind, .substitutionOpen)
+        XCTAssertTrue(tokens[0].text.contains("count"))
+        XCTAssertFalse(tokens[0].text.contains("Done"), "Should not include text after }")
+        XCTAssertEqual(tokens[1].kind, .literal)
+        XCTAssertTrue(tokens[1].text.contains("Done"))
+    }
+    
+    /// Tests %{...}% code blocks with nested braces from closures.
+    func testCodeBlockWithClosure() {
+        let text = #"%{ items.forEach { print($0) } }%Done"#
+        let tokenizer = TemplateTokenizer(text: text)
+        var tokens: [TemplateToken] = []
+        while let token = tokenizer.next() {
+            tokens.append(token)
+        }
+        
+        XCTAssertEqual(tokens.count, 2, "Should have code block and literal")
+        XCTAssertEqual(tokens[0].kind, .gybBlockOpen)
+        XCTAssertTrue(tokens[0].text.contains("forEach"))
+        XCTAssertTrue(tokens[0].text.contains("print($0)"))
+        XCTAssertFalse(tokens[0].text.contains("Done"))
+        XCTAssertEqual(tokens[1].text, "Done")
+    }
+    
+    /// Tests %{...}% code blocks with nested braces from dictionaries.
+    func testCodeBlockWithDictionary() {
+        let text = #"%{ let dict = ["key": "value"]; let x = dict["key"] }%After"#
+        let tokenizer = TemplateTokenizer(text: text)
+        var tokens: [TemplateToken] = []
+        while let token = tokenizer.next() {
+            tokens.append(token)
+        }
+        
+        XCTAssertEqual(tokens.count, 2, "Should have code block and literal")
+        XCTAssertEqual(tokens[0].kind, .gybBlockOpen)
+        XCTAssertTrue(tokens[0].text.contains(#"["key": "value"]"#))
+        XCTAssertFalse(tokens[0].text.contains("After"))
+    }
+    
+    /// Tests %{...}% code blocks with nested control structures.
+    func testCodeBlockWithNestedControlStructures() {
+        let text = #"""
+        %{ if true {
+            let dict = ["a": 1]
+            for (k, v) in dict {
+                print("\(k): \(v)")
+            }
+        } }%Done
+        """#
+        let tokenizer = TemplateTokenizer(text: text)
+        var tokens: [TemplateToken] = []
+        while let token = tokenizer.next() {
+            tokens.append(token)
+        }
+        
+        XCTAssertGreaterThanOrEqual(tokens.count, 1, "Should parse code block")
+        XCTAssertEqual(tokens[0].kind, .gybBlockOpen)
+        XCTAssertTrue(tokens[0].text.contains("if true"))
+        XCTAssertTrue(tokens[0].text.contains("for (k, v)"))
+        // Should NOT include "Done" in code block
+        XCTAssertFalse(tokens[0].text.contains("Done"))
+    }
+    
+    /// Tests %{...}% code blocks with generics containing angle brackets.
+    func testCodeBlockWithGenerics() {
+        let text = #"%{ let arr: Array<[String: Int]> = [] }%Text"#
+        let tokenizer = TemplateTokenizer(text: text)
+        var tokens: [TemplateToken] = []
+        while let token = tokenizer.next() {
+            tokens.append(token)
+        }
+        
+        XCTAssertEqual(tokens.count, 2, "Should handle generics correctly")
+        XCTAssertEqual(tokens[0].kind, .gybBlockOpen)
+        XCTAssertTrue(tokens[0].text.contains("Array<"))
+        XCTAssertTrue(tokens[0].text.contains("[String: Int]"))
+        XCTAssertFalse(tokens[0].text.contains("Text"))
+    }
+    
+    /// Tests %{...}% code blocks with trailing closure syntax.
+    func testCodeBlockWithTrailingClosure() {
+        let text = #"%{ let result = numbers.map { $0 * 2 } }%End"#
+        let tokenizer = TemplateTokenizer(text: text)
+        var tokens: [TemplateToken] = []
+        while let token = tokenizer.next() {
+            tokens.append(token)
+        }
+        
+        XCTAssertEqual(tokens.count, 2)
+        XCTAssertEqual(tokens[0].kind, .gybBlockOpen)
+        XCTAssertTrue(tokens[0].text.contains("map { $0 * 2 }"))
+        XCTAssertFalse(tokens[0].text.contains("End"))
+    }
+    
     /// Tests multiline string literals with delimiters.
     func testMultilineStringWithDelimiter() {
         let text = #"""
