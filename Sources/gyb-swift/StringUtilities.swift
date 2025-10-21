@@ -10,11 +10,13 @@ func getLineStarts(_ text: String) -> [String.Index] {
 
 /// Returns `text` without its trailing newline, if any.
 func stripTrailingNewline(_ text: String) -> String {
-    text.hasSuffix("\n") ? String(text.dropLast()) : text
+    guard let last = text.last, last.isNewline else { return text }
+    return String(text.dropLast())
 }
 
-/// Returns lines from `text`, each with its trailing newline.
+
+/// Returns lines from `text`, each with a trailing newline.
 func splitLines(_ text: String) -> [String] {
-    text.split(separator: "\n", omittingEmptySubsequences: false).map { $0 + "\n" }
+    text.split(omittingEmptySubsequences: false) { $0.isNewline }
+        .map { $0 + "\n" }
 }
-
