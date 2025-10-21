@@ -10,32 +10,70 @@ final class GYBSwiftTests: XCTestCase {
     // MARK: - String Utilities Tests
     
     /// Tests getLineStarts with multi-line text.
-    ///
-    /// Verifies that line starts are correctly identified including sentinel.
     func testGetLineStarts() throws {
         let text = "line1\nline2\nline3"
         let starts = getLineStarts(text)
         
-        // Should have start of each line plus end sentinel
-        // line1\n -> start at 0
-        // line2\n -> start after first \n
-        // line3   -> start after second \n
-        // end     -> sentinel
-        XCTAssertGreaterThanOrEqual(starts.count, 3, "Should have at least 3 starts")
+        XCTAssertEqual(starts.count, 4, "Should have 3 line starts + 1 sentinel")
         XCTAssertEqual(starts[0], text.startIndex, "First start should be text start")
-        XCTAssertEqual(starts.last, text.endIndex, "Last should be text end")
+        XCTAssertEqual(starts.last, text.endIndex, "Last should be sentinel (text end)")
     }
     
-    /// Tests stripTrailingNewline removes newline when present.
+    /// Tests getLineStarts with empty string.
+    func testGetLineStartsEmpty() {
+        let starts = getLineStarts("")
+        XCTAssertEqual(starts.count, 2, "Empty string should have start + sentinel")
+        XCTAssertEqual(starts[0], "".startIndex)
+        XCTAssertEqual(starts[1], "".endIndex)
+    }
+    
+    /// Tests getLineStarts with single line (no newline).
+    func testGetLineStartsSingleLine() {
+        let text = "single line"
+        let starts = getLineStarts(text)
+        XCTAssertEqual(starts.count, 2, "Single line should have start + sentinel")
+        XCTAssertEqual(starts[0], text.startIndex)
+        XCTAssertEqual(starts[1], text.endIndex)
+    }
+    
+    /// Tests getLineStarts handles different newline types.
+    func testGetLineStartsDifferentNewlines() {
+        // LF
+        XCTAssertEqual(getLineStarts("a\nb").count, 3)
+        // CR
+        XCTAssertEqual(getLineStarts("a\rb").count, 3)
+        // CRLF (note: \r\n is one Character in Swift)
+        XCTAssertEqual(getLineStarts("a\r\nb").count, 3)
+    }
+    
+    /// Tests stripTrailingNewline removes LF.
     func testStripTrailingNewlineWithNewline() {
-        let result = stripTrailingNewline("hello\n")
-        XCTAssertEqual(result, "hello")
+        XCTAssertEqual(stripTrailingNewline("hello\n"), "hello")
     }
     
     /// Tests stripTrailingNewline leaves text unchanged when no newline.
     func testStripTrailingNewlineWithoutNewline() {
-        let result = stripTrailingNewline("hello")
-        XCTAssertEqual(result, "hello")
+        XCTAssertEqual(stripTrailingNewline("hello"), "hello")
+    }
+    
+    /// Tests stripTrailingNewline removes CR.
+    func testStripTrailingNewlineCR() {
+        XCTAssertEqual(stripTrailingNewline("hello\r"), "hello")
+    }
+    
+    /// Tests stripTrailingNewline removes CRLF.
+    func testStripTrailingNewlineCRLF() {
+        XCTAssertEqual(stripTrailingNewline("hello\r\n"), "hello")
+    }
+    
+    /// Tests stripTrailingNewline with empty string.
+    func testStripTrailingNewlineEmpty() {
+        XCTAssertEqual(stripTrailingNewline(""), "")
+    }
+    
+    /// Tests stripTrailingNewline with only newline.
+    func testStripTrailingNewlineOnlyNewline() {
+        XCTAssertEqual(stripTrailingNewline("\n"), "")
     }
     
     /// Tests splitLines preserves newlines on each line.
@@ -45,6 +83,44 @@ final class GYBSwiftTests: XCTestCase {
         XCTAssertEqual(lines[0], "a\n")
         XCTAssertEqual(lines[1], "b\n")
         XCTAssertEqual(lines[2], "c\n")
+    }
+    
+    /// Tests splitLines with empty string.
+    func testSplitLinesEmpty() {
+        let lines = splitLines("")
+        XCTAssertEqual(lines.count, 1)
+        XCTAssertEqual(lines[0], "\n")
+    }
+    
+    /// Tests splitLines with single line.
+    func testSplitLinesSingle() {
+        let lines = splitLines("hello")
+        XCTAssertEqual(lines.count, 1)
+        XCTAssertEqual(lines[0], "hello\n")
+    }
+    
+    /// Tests splitLines handles trailing newline.
+    func testSplitLinesTrailingNewline() {
+        let lines = splitLines("a\nb\n")
+        XCTAssertEqual(lines.count, 3)
+        XCTAssertEqual(lines[0], "a\n")
+        XCTAssertEqual(lines[1], "b\n")
+        XCTAssertEqual(lines[2], "\n")
+    }
+    
+    /// Tests splitLines handles different newline types.
+    func testSplitLinesDifferentNewlines() {
+        // CR
+        let cr = splitLines("a\rb")
+        XCTAssertEqual(cr.count, 2)
+        XCTAssertEqual(cr[0], "a\n")
+        XCTAssertEqual(cr[1], "b\n")
+        
+        // CRLF
+        let crlf = splitLines("a\r\nb")
+        XCTAssertEqual(crlf.count, 2)
+        XCTAssertEqual(crlf[0], "a\n")
+        XCTAssertEqual(crlf[1], "b\n")
     }
     
     // MARK: - Tokenization Tests
