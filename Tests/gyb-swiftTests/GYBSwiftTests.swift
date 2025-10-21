@@ -1,606 +1,573 @@
-import XCTest
+import Testing
 @testable import gyb_swift
 
-/// Tests for the GYB-Swift template processor.
-///
-/// These tests are translated from the original Python gyb.py doctests,
-/// adapted for Swift's execution model limitations.
-final class GYBSwiftTests: XCTestCase {
+// MARK: - String Utilities Tests
+
+@Test("getLineStarts with multi-line text")
+func getLineStarts_multiLine() throws {
+    let text = "line1\nline2\nline3"
+    let starts = getLineStarts(text)
     
-    // MARK: - String Utilities Tests
+    #expect(starts.count == 4)
+    #expect(starts[0] == text.startIndex)
+    #expect(starts.last == text.endIndex)
+}
+
+@Test("getLineStarts with empty string")
+func getLineStarts_empty() {
+    let starts = getLineStarts("")
+    #expect(starts.count == 2)
+    #expect(starts[0] == "".startIndex)
+    #expect(starts[1] == "".endIndex)
+}
+
+@Test("getLineStarts with single line")
+func getLineStarts_singleLine() {
+    let text = "single line"
+    let starts = getLineStarts(text)
+    #expect(starts.count == 2)
+    #expect(starts[0] == text.startIndex)
+    #expect(starts[1] == text.endIndex)
+}
+
+@Test("getLineStarts handles different newline types")
+func getLineStarts_differentNewlines() {
+    #expect(getLineStarts("a\nb").count == 3)    // LF
+    #expect(getLineStarts("a\rb").count == 3)    // CR
+    #expect(getLineStarts("a\r\nb").count == 3)  // CRLF (note: \r\n is one Character)
+}
+
+@Test("stripTrailingNewline removes LF")
+func stripTrailingNewline_withLF() {
+    #expect(stripTrailingNewline("hello\n") == "hello")
+}
+
+@Test("stripTrailingNewline unchanged when no newline")
+func stripTrailingNewline_withoutNewline() {
+    #expect(stripTrailingNewline("hello") == "hello")
+}
+
+@Test("stripTrailingNewline removes CR")
+func stripTrailingNewline_withCR() {
+    #expect(stripTrailingNewline("hello\r") == "hello")
+}
+
+@Test("stripTrailingNewline removes CRLF")
+func stripTrailingNewline_withCRLF() {
+    #expect(stripTrailingNewline("hello\r\n") == "hello")
+}
+
+@Test("stripTrailingNewline with empty string")
+func stripTrailingNewline_empty() {
+    #expect(stripTrailingNewline("") == "")
+}
+
+@Test("stripTrailingNewline with only newline")
+func stripTrailingNewline_onlyNewline() {
+    #expect(stripTrailingNewline("\n") == "")
+}
+
+@Test("splitLines preserves newlines on each line")
+func splitLines_basic() {
+    let lines = splitLines("a\nb\nc")
+    #expect(lines.count == 3)
+    #expect(lines[0] == "a\n")
+    #expect(lines[1] == "b\n")
+    #expect(lines[2] == "c\n")
+}
+
+@Test("splitLines with empty string")
+func splitLines_empty() {
+    let lines = splitLines("")
+    #expect(lines.count == 1)
+    #expect(lines[0] == "\n")
+}
+
+@Test("splitLines with single line")
+func splitLines_single() {
+    let lines = splitLines("hello")
+    #expect(lines.count == 1)
+    #expect(lines[0] == "hello\n")
+}
+
+@Test("splitLines handles trailing newline")
+func splitLines_trailingNewline() {
+    let lines = splitLines("a\nb\n")
+    #expect(lines.count == 3)
+    #expect(lines[0] == "a\n")
+    #expect(lines[1] == "b\n")
+    #expect(lines[2] == "\n")
+}
+
+@Test("splitLines handles different newline types")
+func splitLines_differentNewlines() {
+    // CR
+    let cr = splitLines("a\rb")
+    #expect(cr.count == 2)
+    #expect(cr[0] == "a\n")
+    #expect(cr[1] == "b\n")
     
-    /// Tests getLineStarts with multi-line text.
-    func testGetLineStarts() throws {
-        let text = "line1\nline2\nline3"
-        let starts = getLineStarts(text)
-        
-        XCTAssertEqual(starts.count, 4, "Should have 3 line starts + 1 sentinel")
-        XCTAssertEqual(starts[0], text.startIndex, "First start should be text start")
-        XCTAssertEqual(starts.last, text.endIndex, "Last should be sentinel (text end)")
+    // CRLF
+    let crlf = splitLines("a\r\nb")
+    #expect(crlf.count == 2)
+    #expect(crlf[0] == "a\n")
+    #expect(crlf[1] == "b\n")
+}
+
+// MARK: - Tokenization Tests
+
+@Test("tokenize simple literal template")
+func tokenize_literal() {
+    let tokenizer = TemplateTokenizer(text: "Hello, World!")
+    let token = tokenizer.next()
+    
+    #expect(token?.kind == .literal)
+    #expect(token?.text.contains("Hello") == true)
+}
+
+@Test("tokenize $$ escape sequence")
+func tokenize_escapedDollar() {
+    let tokenizer = TemplateTokenizer(text: "$$100")
+    var tokens: [TemplateToken] = []
+    while let token = tokenizer.next() {
+        tokens.append(token)
     }
     
-    /// Tests getLineStarts with empty string.
-    func testGetLineStartsEmpty() {
-        let starts = getLineStarts("")
-        XCTAssertEqual(starts.count, 2, "Empty string should have start + sentinel")
-        XCTAssertEqual(starts[0], "".startIndex)
-        XCTAssertEqual(starts[1], "".endIndex)
+    #expect(tokens.contains { $0.kind == .symbol && $0.text == "$$" })
+}
+
+@Test("tokenize %% escape sequence")
+func tokenize_escapedPercent() {
+    let tokenizer = TemplateTokenizer(text: "100%%")
+    var tokens: [TemplateToken] = []
+    while let token = tokenizer.next() {
+        tokens.append(token)
     }
     
-    /// Tests getLineStarts with single line (no newline).
-    func testGetLineStartsSingleLine() {
-        let text = "single line"
-        let starts = getLineStarts(text)
-        XCTAssertEqual(starts.count, 2, "Single line should have start + sentinel")
-        XCTAssertEqual(starts[0], text.startIndex)
-        XCTAssertEqual(starts[1], text.endIndex)
+    #expect(tokens.contains { $0.kind == .symbol && $0.text == "%%" })
+}
+
+@Test("tokenize ${} substitution")
+func tokenize_substitution() {
+    let tokenizer = TemplateTokenizer(text: "${x}")
+    var tokens: [TemplateToken] = []
+    while let token = tokenizer.next() {
+        tokens.append(token)
     }
     
-    /// Tests getLineStarts handles different newline types.
-    func testGetLineStartsDifferentNewlines() {
-        // LF
-        XCTAssertEqual(getLineStarts("a\nb").count, 3)
-        // CR
-        XCTAssertEqual(getLineStarts("a\rb").count, 3)
-        // CRLF (note: \r\n is one Character in Swift)
-        XCTAssertEqual(getLineStarts("a\r\nb").count, 3)
+    #expect(tokens.contains { $0.kind == .substitutionOpen })
+}
+
+@Test("tokenize %{} code block")
+func tokenize_codeBlock() {
+    let tokenizer = TemplateTokenizer(text: "%{ let x = 42 }%")
+    var tokens: [TemplateToken] = []
+    while let token = tokenizer.next() {
+        tokens.append(token)
     }
     
-    /// Tests stripTrailingNewline removes LF.
-    func testStripTrailingNewlineWithNewline() {
-        XCTAssertEqual(stripTrailingNewline("hello\n"), "hello")
+    #expect(tokens.contains { $0.kind == .gybBlockOpen })
+}
+
+@Test("}% inside strings doesn't terminate code block")
+// This is the critical test case that requires Swift tokenization.
+// Without proper tokenization, the naive scanner would incorrectly
+// stop at the }% inside the string literal.
+func codeBlock_delimiterInString() {
+    let tokenizer = TemplateTokenizer(text: #"%{ let msg = "Error: }% not allowed" }%Done"#)
+    var tokens: [TemplateToken] = []
+    while let token = tokenizer.next() {
+        tokens.append(token)
     }
     
-    /// Tests stripTrailingNewline leaves text unchanged when no newline.
-    func testStripTrailingNewlineWithoutNewline() {
-        XCTAssertEqual(stripTrailingNewline("hello"), "hello")
+    #expect(tokens.count == 2)
+    #expect(tokens[0].kind == .gybBlockOpen)
+    #expect(tokens[0].text.contains(#""Error: }% not allowed""#))
+    #expect(tokens[1].kind == .literal)
+    #expect(tokens[1].text == "Done")
+}
+
+@Test("} inside strings in ${} doesn't terminate substitution")
+// This verifies SwiftSyntax correctly handles dictionary/subscript syntax
+// where } appears in string keys.
+func substitution_braceInString() {
+    let tokenizer = TemplateTokenizer(text: #"${dict["key}value"]}Done"#)
+    var tokens: [TemplateToken] = []
+    while let token = tokenizer.next() {
+        tokens.append(token)
     }
     
-    /// Tests stripTrailingNewline removes CR.
-    func testStripTrailingNewlineCR() {
-        XCTAssertEqual(stripTrailingNewline("hello\r"), "hello")
+    #expect(tokens.count == 2)
+    #expect(tokens[0].kind == .substitutionOpen)
+    #expect(tokens[0].text.contains(#""key}value""#))
+    #expect(tokens[1].kind == .literal)
+    #expect(tokens[1].text == "Done")
+}
+
+@Test("multiple nested strings with delimiters")
+func nestedStrings_withDelimiters() {
+    let text = #"%{ let a = "first }% here"; let b = "second }% there" }%"#
+    let tokenizer = TemplateTokenizer(text: text)
+    var tokens: [TemplateToken] = []
+    while let token = tokenizer.next() {
+        tokens.append(token)
     }
     
-    /// Tests stripTrailingNewline removes CRLF.
-    func testStripTrailingNewlineCRLF() {
-        XCTAssertEqual(stripTrailingNewline("hello\r\n"), "hello")
+    #expect(tokens.count == 1)
+    #expect(tokens[0].kind == .gybBlockOpen)
+    #expect(tokens[0].text.contains("first }% here"))
+    #expect(tokens[0].text.contains("second }% there"))
+}
+
+@Test("SwiftSyntax parser handles invalid/incomplete Swift gracefully")
+// This is critical because sourceText[start...] often contains template text
+// after the Swift code, making it syntactically invalid. SwiftSyntax Parser
+// is designed to be resilient (for LSP use) and handles this correctly.
+func parser_resilientWithInvalidSwift() {
+    // Test case: valid Swift code followed by template text
+    // When parsing ${count}, we actually parse "count}Done" which is invalid Swift
+    let tokenizer = TemplateTokenizer(text: "${count}Done")
+    var tokens: [TemplateToken] = []
+    while let token = tokenizer.next() {
+        tokens.append(token)
     }
     
-    /// Tests stripTrailingNewline with empty string.
-    func testStripTrailingNewlineEmpty() {
-        XCTAssertEqual(stripTrailingNewline(""), "")
+    #expect(tokens.count == 2)
+    #expect(tokens[0].kind == .substitutionOpen)
+    #expect(tokens[0].text.contains("count"))
+    #expect(!tokens[0].text.contains("Done"))
+    #expect(tokens[1].kind == .literal)
+    #expect(tokens[1].text.contains("Done"))
+}
+
+@Test("%{...}% code blocks with nested braces from closures")
+func codeBlock_withClosure() {
+    let text = #"%{ items.forEach { print($0) } }%Done"#
+    let tokenizer = TemplateTokenizer(text: text)
+    var tokens: [TemplateToken] = []
+    while let token = tokenizer.next() {
+        tokens.append(token)
     }
     
-    /// Tests stripTrailingNewline with only newline.
-    func testStripTrailingNewlineOnlyNewline() {
-        XCTAssertEqual(stripTrailingNewline("\n"), "")
+    #expect(tokens.count == 2)
+    #expect(tokens[0].kind == .gybBlockOpen)
+    #expect(tokens[0].text.contains("forEach"))
+    #expect(tokens[0].text.contains("print($0)"))
+    #expect(!tokens[0].text.contains("Done"))
+    #expect(tokens[1].text == "Done")
+}
+
+@Test("%{...}% code blocks with nested braces from dictionaries")
+func codeBlock_withDictionary() {
+    let text = #"%{ let dict = ["key": "value"]; let x = dict["key"] }%After"#
+    let tokenizer = TemplateTokenizer(text: text)
+    var tokens: [TemplateToken] = []
+    while let token = tokenizer.next() {
+        tokens.append(token)
     }
     
-    /// Tests splitLines preserves newlines on each line.
-    func testSplitLines() {
-        let lines = splitLines("a\nb\nc")
-        XCTAssertEqual(lines.count, 3)
-        XCTAssertEqual(lines[0], "a\n")
-        XCTAssertEqual(lines[1], "b\n")
-        XCTAssertEqual(lines[2], "c\n")
-    }
-    
-    /// Tests splitLines with empty string.
-    func testSplitLinesEmpty() {
-        let lines = splitLines("")
-        XCTAssertEqual(lines.count, 1)
-        XCTAssertEqual(lines[0], "\n")
-    }
-    
-    /// Tests splitLines with single line.
-    func testSplitLinesSingle() {
-        let lines = splitLines("hello")
-        XCTAssertEqual(lines.count, 1)
-        XCTAssertEqual(lines[0], "hello\n")
-    }
-    
-    /// Tests splitLines handles trailing newline.
-    func testSplitLinesTrailingNewline() {
-        let lines = splitLines("a\nb\n")
-        XCTAssertEqual(lines.count, 3)
-        XCTAssertEqual(lines[0], "a\n")
-        XCTAssertEqual(lines[1], "b\n")
-        XCTAssertEqual(lines[2], "\n")
-    }
-    
-    /// Tests splitLines handles different newline types.
-    func testSplitLinesDifferentNewlines() {
-        // CR
-        let cr = splitLines("a\rb")
-        XCTAssertEqual(cr.count, 2)
-        XCTAssertEqual(cr[0], "a\n")
-        XCTAssertEqual(cr[1], "b\n")
-        
-        // CRLF
-        let crlf = splitLines("a\r\nb")
-        XCTAssertEqual(crlf.count, 2)
-        XCTAssertEqual(crlf[0], "a\n")
-        XCTAssertEqual(crlf[1], "b\n")
-    }
-    
-    // MARK: - Tokenization Tests
-    
-    /// Tests tokenizing a simple literal template.
-    func testTokenizeLiteral() {
-        let tokenizer = TemplateTokenizer(text: "Hello, World!")
-        let token = tokenizer.next()
-        
-        XCTAssertNotNil(token)
-        if case .literal = token?.kind {
-            XCTAssertTrue(token!.text.contains("Hello"))
-        } else {
-            XCTFail("Expected literal token")
+    #expect(tokens.count == 2)
+    #expect(tokens[0].kind == .gybBlockOpen)
+    #expect(tokens[0].text.contains(#"["key": "value"]"#))
+    #expect(!tokens[0].text.contains("After"))
+}
+
+@Test("%{...}% code blocks with nested control structures")
+func codeBlock_nestedControlStructures() {
+    let text = #"""
+    %{ if true {
+        let dict = ["a": 1]
+        for (k, v) in dict {
+            print("\(k): \(v)")
         }
+    } }%Done
+    """#
+    let tokenizer = TemplateTokenizer(text: text)
+    var tokens: [TemplateToken] = []
+    while let token = tokenizer.next() {
+        tokens.append(token)
     }
     
-    /// Tests tokenizing $$ escape sequence.
-    func testTokenizeEscapedDollar() {
-        let tokenizer = TemplateTokenizer(text: "$$100")
-        var tokens: [TemplateToken] = []
-        while let token = tokenizer.next() {
-            tokens.append(token)
-        }
-        
-        XCTAssertTrue(tokens.contains { $0.kind == .symbol && $0.text == "$$" })
+    #expect(tokens.count >= 1)
+    #expect(tokens[0].kind == .gybBlockOpen)
+    #expect(tokens[0].text.contains("if true"))
+    #expect(tokens[0].text.contains("for (k, v)"))
+    #expect(!tokens[0].text.contains("Done"))
+}
+
+@Test("%{...}% code blocks with generics containing angle brackets")
+func codeBlock_withGenerics() {
+    let text = #"%{ let arr: Array<[String: Int]> = [] }%Text"#
+    let tokenizer = TemplateTokenizer(text: text)
+    var tokens: [TemplateToken] = []
+    while let token = tokenizer.next() {
+        tokens.append(token)
     }
     
-    /// Tests tokenizing %% escape sequence.
-    func testTokenizeEscapedPercent() {
-        let tokenizer = TemplateTokenizer(text: "100%%")
-        var tokens: [TemplateToken] = []
-        while let token = tokenizer.next() {
-            tokens.append(token)
-        }
-        
-        XCTAssertTrue(tokens.contains { $0.kind == .symbol && $0.text == "%%" })
+    #expect(tokens.count == 2)
+    #expect(tokens[0].kind == .gybBlockOpen)
+    #expect(tokens[0].text.contains("Array<"))
+    #expect(tokens[0].text.contains("[String: Int]"))
+    #expect(!tokens[0].text.contains("Text"))
+}
+
+@Test("%{...}% code blocks with trailing closure syntax")
+func codeBlock_trailingClosure() {
+    let text = #"%{ let result = numbers.map { $0 * 2 } }%End"#
+    let tokenizer = TemplateTokenizer(text: text)
+    var tokens: [TemplateToken] = []
+    while let token = tokenizer.next() {
+        tokens.append(token)
     }
     
-    /// Tests tokenizing ${} substitution.
-    func testTokenizeSubstitution() {
-        let tokenizer = TemplateTokenizer(text: "${x}")
-        var tokens: [TemplateToken] = []
-        while let token = tokenizer.next() {
-            tokens.append(token)
-        }
-        
-        XCTAssertTrue(tokens.contains { $0.kind == .substitutionOpen })
+    #expect(tokens.count == 2)
+    #expect(tokens[0].kind == .gybBlockOpen)
+    #expect(tokens[0].text.contains("map { $0 * 2 }"))
+    #expect(!tokens[0].text.contains("End"))
+}
+
+@Test("multiline string literals with delimiters")
+func multilineString_withDelimiter() {
+    let text = #"""
+    %{ let msg = """
+    Error message with }% in it
+    """ }%Done
+    """#
+    let tokenizer = TemplateTokenizer(text: text)
+    var tokens: [TemplateToken] = []
+    while let token = tokenizer.next() {
+        tokens.append(token)
     }
     
-    /// Tests tokenizing %{} code block.
-    func testTokenizeCodeBlock() {
-        let tokenizer = TemplateTokenizer(text: "%{ let x = 42 }%")
-        var tokens: [TemplateToken] = []
-        while let token = tokenizer.next() {
-            tokens.append(token)
-        }
-        
-        XCTAssertTrue(tokens.contains { $0.kind == .gybBlockOpen })
-    }
+    #expect(tokens.count >= 1)
+}
+
+@Test("tokenize % code lines")
+func tokenize_codeLines() {
+    let tokenizer = TemplateTokenizer(text: "% let x = 10\n")
+    let token = tokenizer.next()
     
-    /// Tests that }% inside strings doesn't terminate code block.
-    ///
-    /// This is the critical test case that requires Swift tokenization.
-    /// Without proper tokenization, the naive scanner would incorrectly
-    /// stop at the }% inside the string literal.
-    func testCodeBlockWithDelimiterInString() {
-        let tokenizer = TemplateTokenizer(text: #"%{ let msg = "Error: }% not allowed" }%Done"#)
-        var tokens: [TemplateToken] = []
-        while let token = tokenizer.next() {
-            tokens.append(token)
-        }
-        
-        // Should have: gybBlockOpen, literal("Done")
-        XCTAssertEqual(tokens.count, 2, "Should have 2 tokens: code block and literal")
-        XCTAssertEqual(tokens[0].kind, .gybBlockOpen, "First should be code block")
-        XCTAssertTrue(tokens[0].text.contains(#""Error: }% not allowed""#), 
-                      "Should contain full string with }% inside it")
-        XCTAssertEqual(tokens[1].kind, .literal, "Second should be literal")
-        XCTAssertEqual(tokens[1].text, "Done", "Should be 'Done'")
-    }
+    #expect(token?.kind == .gybLines)
+}
+
+// MARK: - Parse Tests
+
+@Test("parse simple literal template")
+func parse_literalTemplate() throws {
+    let text = "Hello, World!"
+    let ast = try parseTemplate(filename: "test", text: text)
     
-    /// Tests that } inside strings in ${} doesn't terminate substitution.
-    ///
-    /// This verifies SwiftSyntax correctly handles dictionary/subscript syntax
-    /// where } appears in string keys.
-    func testSubstitutionWithBraceInString() {
-        let tokenizer = TemplateTokenizer(text: #"${dict["key}value"]}Done"#)
-        var tokens: [TemplateToken] = []
-        while let token = tokenizer.next() {
-            tokens.append(token)
-        }
-        
-        // Should have: substitutionOpen, literal("Done")
-        XCTAssertEqual(tokens.count, 2, "Should have 2 tokens: substitution and literal")
-        XCTAssertEqual(tokens[0].kind, .substitutionOpen, "First should be substitution")
-        XCTAssertTrue(tokens[0].text.contains(#""key}value""#), 
-                      "Should contain full string with } inside it")
-        XCTAssertEqual(tokens[1].kind, .literal, "Second should be literal")
-        XCTAssertEqual(tokens[1].text, "Done", "Should be 'Done'")
-    }
+    #expect(ast.children.count == 1)
+    #expect(ast.children[0] is LiteralNode)
+}
+
+@Test("parse template with escaped symbols")
+func parse_templateWithEscapedSymbols() throws {
+    let text = "$$dollar and %%percent"
+    let ast = try parseTemplate(filename: "test", text: text)
     
-    /// Tests multiple nested strings with delimiters.
-    func testNestedStringsWithDelimiters() {
-        let text = #"%{ let a = "first }% here"; let b = "second }% there" }%"#
-        let tokenizer = TemplateTokenizer(text: text)
-        var tokens: [TemplateToken] = []
-        while let token = tokenizer.next() {
-            tokens.append(token)
-        }
-        
-        XCTAssertEqual(tokens.count, 1, "Should be one complete code block")
-        XCTAssertEqual(tokens[0].kind, .gybBlockOpen)
-        XCTAssertTrue(tokens[0].text.contains("first }% here"))
-        XCTAssertTrue(tokens[0].text.contains("second }% there"))
-    }
+    #expect(ast.children.count >= 1)
+}
+
+@Test("parse substitution")
+func parse_substitution() throws {
+    let text = "${x}"
+    let ast = try parseTemplate(filename: "test", text: text)
     
-    /// Tests that SwiftSyntax parser handles invalid/incomplete Swift gracefully.
-    ///
-    /// This is critical because sourceText[start...] often contains template text
-    /// after the Swift code, making it syntactically invalid. SwiftSyntax Parser
-    /// is designed to be resilient (for LSP use) and handles this correctly.
-    func testParserResilientWithInvalidSwift() {
-        // Test case: valid Swift code followed by template text
-        // When parsing ${count}, we actually parse "count}Done" which is invalid Swift
-        let tokenizer = TemplateTokenizer(text: "${count}Done")
-        var tokens: [TemplateToken] = []
-        while let token = tokenizer.next() {
-            tokens.append(token)
-        }
-        
-        XCTAssertEqual(tokens.count, 2, "Should correctly parse despite invalid Swift")
-        XCTAssertEqual(tokens[0].kind, .substitutionOpen)
-        XCTAssertTrue(tokens[0].text.contains("count"))
-        XCTAssertFalse(tokens[0].text.contains("Done"), "Should not include text after }")
-        XCTAssertEqual(tokens[1].kind, .literal)
-        XCTAssertTrue(tokens[1].text.contains("Done"))
-    }
+    #expect(ast.children.count == 1)
+    #expect(ast.children[0] is SubstitutionNode)
+}
+
+@Test("parse code block")
+func parse_codeBlock() throws {
+    let text = "%{ let x = 42 }%"
+    let ast = try parseTemplate(filename: "test", text: text)
     
-    /// Tests %{...}% code blocks with nested braces from closures.
-    func testCodeBlockWithClosure() {
-        let text = #"%{ items.forEach { print($0) } }%Done"#
-        let tokenizer = TemplateTokenizer(text: text)
-        var tokens: [TemplateToken] = []
-        while let token = tokenizer.next() {
-            tokens.append(token)
-        }
-        
-        XCTAssertEqual(tokens.count, 2, "Should have code block and literal")
-        XCTAssertEqual(tokens[0].kind, .gybBlockOpen)
-        XCTAssertTrue(tokens[0].text.contains("forEach"))
-        XCTAssertTrue(tokens[0].text.contains("print($0)"))
-        XCTAssertFalse(tokens[0].text.contains("Done"))
-        XCTAssertEqual(tokens[1].text, "Done")
-    }
+    #expect(ast.children.count == 1)
+    #expect(ast.children[0] is CodeNode)
+}
+
+// MARK: - Basic Execution Tests
+
+@Test("execute simple literal template")
+func execute_literalTemplate() throws {
+    let text = "Hello, World!"
+    let ast = try parseTemplate(filename: "test", text: text)
+    let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
     
-    /// Tests %{...}% code blocks with nested braces from dictionaries.
-    func testCodeBlockWithDictionary() {
-        let text = #"%{ let dict = ["key": "value"]; let x = dict["key"] }%After"#
-        let tokenizer = TemplateTokenizer(text: text)
-        var tokens: [TemplateToken] = []
-        while let token = tokenizer.next() {
-            tokens.append(token)
-        }
-        
-        XCTAssertEqual(tokens.count, 2, "Should have code block and literal")
-        XCTAssertEqual(tokens[0].kind, .gybBlockOpen)
-        XCTAssertTrue(tokens[0].text.contains(#"["key": "value"]"#))
-        XCTAssertFalse(tokens[0].text.contains("After"))
-    }
+    #expect(result == "Hello, World!")
+}
+
+@Test("execute template with escaped symbols")
+func execute_templateWithEscapedSymbols() throws {
+    let text = "Price: $$50"
+    let ast = try parseTemplate(filename: "test", text: text)
+    let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
     
-    /// Tests %{...}% code blocks with nested control structures.
-    func testCodeBlockWithNestedControlStructures() {
-        let text = #"""
-        %{ if true {
-            let dict = ["a": 1]
-            for (k, v) in dict {
-                print("\(k): \(v)")
-            }
-        } }%Done
-        """#
-        let tokenizer = TemplateTokenizer(text: text)
-        var tokens: [TemplateToken] = []
-        while let token = tokenizer.next() {
-            tokens.append(token)
-        }
-        
-        XCTAssertGreaterThanOrEqual(tokens.count, 1, "Should parse code block")
-        XCTAssertEqual(tokens[0].kind, .gybBlockOpen)
-        XCTAssertTrue(tokens[0].text.contains("if true"))
-        XCTAssertTrue(tokens[0].text.contains("for (k, v)"))
-        // Should NOT include "Done" in code block
-        XCTAssertFalse(tokens[0].text.contains("Done"))
-    }
+    #expect(result.contains("$50"))
+}
+
+@Test("substitution with bound variable")
+func substitution_withSimpleBinding() throws {
+    let text = "x = ${x}"
+    let ast = try parseTemplate(filename: "test", text: text)
+    let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: ["x": 42])
+    #expect(result.contains("42"))
+}
+
+@Test("empty template")
+func execute_emptyTemplate() throws {
+    let text = ""
+    let ast = try parseTemplate(filename: "test", text: text)
+    let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
     
-    /// Tests %{...}% code blocks with generics containing angle brackets.
-    func testCodeBlockWithGenerics() {
-        let text = #"%{ let arr: Array<[String: Int]> = [] }%Text"#
-        let tokenizer = TemplateTokenizer(text: text)
-        var tokens: [TemplateToken] = []
-        while let token = tokenizer.next() {
-            tokens.append(token)
-        }
-        
-        XCTAssertEqual(tokens.count, 2, "Should handle generics correctly")
-        XCTAssertEqual(tokens[0].kind, .gybBlockOpen)
-        XCTAssertTrue(tokens[0].text.contains("Array<"))
-        XCTAssertTrue(tokens[0].text.contains("[String: Int]"))
-        XCTAssertFalse(tokens[0].text.contains("Text"))
-    }
+    #expect(result == "")
+}
+
+@Test("template with only whitespace")
+func execute_whitespaceOnly() throws {
+    let text = "   \n\t\n   "
+    let ast = try parseTemplate(filename: "test", text: text)
+    let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
     
-    /// Tests %{...}% code blocks with trailing closure syntax.
-    func testCodeBlockWithTrailingClosure() {
-        let text = #"%{ let result = numbers.map { $0 * 2 } }%End"#
-        let tokenizer = TemplateTokenizer(text: text)
-        var tokens: [TemplateToken] = []
-        while let token = tokenizer.next() {
-            tokens.append(token)
-        }
-        
-        XCTAssertEqual(tokens.count, 2)
-        XCTAssertEqual(tokens[0].kind, .gybBlockOpen)
-        XCTAssertTrue(tokens[0].text.contains("map { $0 * 2 }"))
-        XCTAssertFalse(tokens[0].text.contains("End"))
-    }
+    #expect(result == text)
+}
+
+@Test("mixed literal and symbols")
+func execute_mixedLiteralsAndSymbols() throws {
+    let text = "Regular $$text with %%symbols"
+    let ast = try parseTemplate(filename: "test", text: text)
+    let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
     
-    /// Tests multiline string literals with delimiters.
-    func testMultilineStringWithDelimiter() {
-        let text = #"""
-        %{ let msg = """
-        Error message with }% in it
-        """ }%Done
-        """#
-        let tokenizer = TemplateTokenizer(text: text)
-        var tokens: [TemplateToken] = []
-        while let token = tokenizer.next() {
-            tokens.append(token)
-        }
-        
-        // SwiftParser should handle multiline strings correctly
-        XCTAssertGreaterThanOrEqual(tokens.count, 1, "Should tokenize without crash")
-    }
+    #expect(result.contains("Regular"))
+    #expect(result.contains("$text"))
+    #expect(result.contains("%symbols"))
+}
+
+@Test("malformed substitutions handled gracefully")
+func parse_malformedSubstitution() {
+    let text = "${unclosed"
     
-    /// Tests tokenizing % code lines.
-    func testTokenizeCodeLines() {
-        let tokenizer = TemplateTokenizer(text: "% let x = 10\n")
-        let token = tokenizer.next()
-        
-        XCTAssertNotNil(token)
-        XCTAssertEqual(token?.kind, .gybLines)
-    }
-    
-    // MARK: - Parse Tests
-    
-    /// Tests parsing a simple literal template.
-    func testParseLiteralTemplate() throws {
-        let text = "Hello, World!"
+    // Should handle gracefully - either parse as literal or throw clear error
+    do {
         let ast = try parseTemplate(filename: "test", text: text)
-        
-        XCTAssertEqual(ast.children.count, 1)
-        XCTAssertTrue(ast.children[0] is LiteralNode)
-    }
-    
-    /// Tests parsing template with escaped symbols.
-    func testParseTemplateWithEscapedSymbols() throws {
-        let text = "$$dollar and %%percent"
-        let ast = try parseTemplate(filename: "test", text: text)
-        
-        // Should have parsed the symbols
-        XCTAssertGreaterThanOrEqual(ast.children.count, 1)
-    }
-    
-    /// Tests parsing substitution.
-    func testParseSubstitution() throws {
-        let text = "${x}"
-        let ast = try parseTemplate(filename: "test", text: text)
-        
-        XCTAssertEqual(ast.children.count, 1)
-        XCTAssertTrue(ast.children[0] is SubstitutionNode)
-    }
-    
-    /// Tests parsing code block.
-    func testParseCodeBlock() throws {
-        let text = "%{ let x = 42 }%"
-        let ast = try parseTemplate(filename: "test", text: text)
-        
-        XCTAssertEqual(ast.children.count, 1)
-        XCTAssertTrue(ast.children[0] is CodeNode)
-    }
-    
-    // MARK: - Basic Execution Tests
-    
-    /// Tests executing a simple literal template.
-    func testExecuteLiteralTemplate() throws {
-        let text = "Hello, World!"
-        let ast = try parseTemplate(filename: "test", text: text)
-        let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
-        
-        XCTAssertEqual(result, "Hello, World!")
-    }
-    
-    /// Tests executing template with escaped symbols.
-    func testExecuteTemplateWithEscapedSymbols() throws {
-        let text = "Price: $$50"
-        let ast = try parseTemplate(filename: "test", text: text)
-        let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
-        
-        XCTAssertTrue(result.contains("$50"), "Expected '$50' in result")
-    }
-    
-    /// Tests substitution with bound variable.
-    func testSubstitutionWithSimpleBinding() throws {
-        let text = "x = ${x}"
-        let ast = try parseTemplate(filename: "test", text: text)
-        let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: ["x": 42])
-        XCTAssertTrue(result.contains("42"), "Result should contain '42'")
-    }
-    
-    /// Tests empty template.
-    func testEmptyTemplate() throws {
-        let text = ""
-        let ast = try parseTemplate(filename: "test", text: text)
-        let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
-        
-        XCTAssertEqual(result, "")
-    }
-    
-    /// Tests template with only whitespace.
-    func testWhitespaceOnlyTemplate() throws {
-        let text = "   \n\t\n   "
-        let ast = try parseTemplate(filename: "test", text: text)
-        let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
-        
-        XCTAssertEqual(result, text)
-    }
-    
-    /// Tests mixed literal and symbols.
-    func testMixedLiteralsAndSymbols() throws {
-        let text = "Regular $$text with %%symbols"
-        let ast = try parseTemplate(filename: "test", text: text)
-        let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
-        
-        XCTAssertTrue(result.contains("Regular"))
-        XCTAssertTrue(result.contains("$text"))
-        XCTAssertTrue(result.contains("%symbols"))
-    }
-    
-    /// Tests that malformed substitutions are handled gracefully.
-    func testMalformedSubstitution() {
-        let text = "${unclosed"
-        
-        // Should handle gracefully - either parse as literal or throw clear error
-        do {
-            let ast = try parseTemplate(filename: "test", text: text)
-            _ = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
-        } catch {
-            // Error is acceptable for malformed input
-            XCTAssertNotNil(error)
-        }
-    }
-    
-    /// Tests multiple literals in sequence.
-    func testMultipleLiterals() throws {
-        let text = "First line\nSecond line\nThird line"
-        let ast = try parseTemplate(filename: "test", text: text)
-        let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
-        
-        XCTAssertEqual(result, text)
-    }
-    
-    /// Tests AST structure for mixed template.
-    func testASTStructure() throws {
-        let text = "Text ${x} more text"
-        let ast = try parseTemplate(filename: "test", text: text)
-        
-        // Should have multiple children: literal, substitution, literal
-        XCTAssertGreaterThanOrEqual(ast.children.count, 1)
-        
-        var hasSubstitution = false
-        for child in ast.children {
-            if child is SubstitutionNode {
-                hasSubstitution = true
-            }
-        }
-        XCTAssertTrue(hasSubstitution, "Should have a substitution node")
-    }
-    
-    /// Tests line directive generation.
-    func testLineDirectives() throws {
-        let text = "Line 1\nLine 2"
-        let ast = try parseTemplate(filename: "test.gyb", text: text)
-        let result = try executeTemplate(
-            ast,
-            filename: "test.gyb",
-            lineDirective: "//# line %(line)d \"%(file)s\"",
-            bindings: [:]
-        )
-        
-        // For literal-only templates, line directives may not be emitted
-        // That's acceptable behavior
-        XCTAssertNotNil(result, "Should produce result")
-        // If the template has no code, it won't emit line directives
-        // This is correct behavior for pure literal templates
-    }
-    
-    // MARK: - Documentation Tests
-    
-    /// Tests that all major components can be instantiated.
-    func testComponentInstantiation() {
-        // Test tokenizer
-        let tokenizer = TemplateTokenizer(text: "test")
-        XCTAssertNotNil(tokenizer)
-        
-        // Test parse context
-        let context = ParseContext(filename: "test", text: "content")
-        XCTAssertNotNil(context)
-        XCTAssertEqual(context.filename, "test")
-        
-        // Test execution context
-        let execContext = ExecutionContext(filename: "test")
-        XCTAssertNotNil(execContext)
-    }
-    
-    /// Tests AST node creation.
-    func testASTNodeCreation() {
-        let literal = LiteralNode(text: "hello", line: 1)
-        XCTAssertEqual(literal.text, "hello")
-        
-        let code = CodeNode(code: "let x = 1", line: 1)
-        XCTAssertEqual(code.code, "let x = 1")
-        
-        let subst = SubstitutionNode(expression: "x", line: 1)
-        XCTAssertEqual(subst.expression, "x")
-        
-        let block = BlockNode(children: [literal], line: 1)
-        XCTAssertEqual(block.children.count, 1)
+        _ = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
+    } catch {
+        // Error is expected for malformed input
     }
 }
 
-/// Tests for integration scenarios.
-///
-/// These demonstrate end-to-end template processing where applicable.
-final class GYBIntegrationTests: XCTestCase {
+@Test("multiple literals in sequence")
+func execute_multipleLiterals() throws {
+    let text = "First line\nSecond line\nThird line"
+    let ast = try parseTemplate(filename: "test", text: text)
+    let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
     
-    /// Tests processing a realistic template with multiple features.
-    func testRealisticTemplate() throws {
-        let text = """
-        // Generated file
-        struct Example {
-            let count = ${count}
+    #expect(result == text)
+}
+
+@Test("AST structure for mixed template")
+func ast_structure() throws {
+    let text = "Text ${x} more text"
+    let ast = try parseTemplate(filename: "test", text: text)
+    
+    #expect(ast.children.count >= 1)
+    
+    var hasSubstitution = false
+    for child in ast.children {
+        if child is SubstitutionNode {
+            hasSubstitution = true
         }
-        """
-        
-        let ast = try parseTemplate(filename: "test.gyb", text: text)
-        let result = try executeTemplate(
-            ast,
-            filename: "test.gyb",
-            lineDirective: "",
-            bindings: ["count": 42]
-        )
-        
-        XCTAssertTrue(result.contains("struct Example"))
-        XCTAssertTrue(result.contains("42"))
     }
+    #expect(hasSubstitution)
+}
+
+@Test("line directive generation")
+func execute_lineDirectives() throws {
+    let text = "Line 1\nLine 2"
+    let ast = try parseTemplate(filename: "test.gyb", text: text)
+    let result = try executeTemplate(
+        ast,
+        filename: "test.gyb",
+        lineDirective: "//# line %(line)d \"%(file)s\"",
+        bindings: [:]
+    )
     
-    /// Tests that the template structure is preserved.
-    func testTemplateStructurePreservation() throws {
-        let text = """
-        Header
-        
-        Body content
-        
-        Footer
-        """
-        
-        let ast = try parseTemplate(filename: "test", text: text)
-        let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
-        
-        XCTAssertTrue(result.contains("Header"))
-        XCTAssertTrue(result.contains("Body content"))
-        XCTAssertTrue(result.contains("Footer"))
+    // For literal-only templates, line directives may not be emitted
+    // That's acceptable behavior - just verify we get the expected text
+    #expect(result.contains("Line 1"))
+    #expect(result.contains("Line 2"))
+}
+
+// MARK: - Documentation Tests
+
+@Test("all major components can be instantiated")
+func components_instantiation() {
+    // Test tokenizer - verify it can be created and used
+    let tokenizer = TemplateTokenizer(text: "test")
+    _ = tokenizer.next()  // Verify it works
+    
+    // Test parse context
+    let context = ParseContext(filename: "test", text: "content")
+    #expect(context.filename == "test")
+    
+    // Test execution context
+    let execContext = ExecutionContext(filename: "test")
+    #expect(execContext.filename == "test")
+}
+
+@Test("AST node creation")
+func astNode_creation() {
+    let literal = LiteralNode(text: "hello", line: 1)
+    #expect(literal.text == "hello")
+    
+    let code = CodeNode(code: "let x = 1", line: 1)
+    #expect(code.code == "let x = 1")
+    
+    let subst = SubstitutionNode(expression: "x", line: 1)
+    #expect(subst.expression == "x")
+    
+    let block = BlockNode(children: [literal], line: 1)
+    #expect(block.children.count == 1)
+}
+
+// MARK: - Integration Tests
+
+@Test("realistic template with multiple features")
+func integration_realisticTemplate() throws {
+    let text = """
+    // Generated file
+    struct Example {
+        let count = ${count}
     }
+    """
+    
+    let ast = try parseTemplate(filename: "test.gyb", text: text)
+    let result = try executeTemplate(
+        ast,
+        filename: "test.gyb",
+        lineDirective: "",
+        bindings: ["count": 42]
+    )
+    
+    #expect(result.contains("struct Example"))
+    #expect(result.contains("42"))
+}
+
+@Test("template structure is preserved")
+func integration_templateStructurePreservation() throws {
+    let text = """
+    Header
+    
+    Body content
+    
+    Footer
+    """
+    
+    let ast = try parseTemplate(filename: "test", text: text)
+    let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
+    
+    #expect(result.contains("Header"))
+    #expect(result.contains("Body content"))
+    #expect(result.contains("Footer"))
 }
