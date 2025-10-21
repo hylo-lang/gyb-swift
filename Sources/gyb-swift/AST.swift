@@ -127,7 +127,7 @@ class ParseContext {
     /// Returns AST nodes parsed from the template.
     func parseNodes() throws -> [ASTNode] {
         var nodes: [ASTNode] = []
-        var tokenIterator = TemplateTokenizer(text: templateText)
+        var tokenIterator = TemplateTokens(text: templateText)
         
         while let token = tokenIterator.next() {
             let line = currentLine

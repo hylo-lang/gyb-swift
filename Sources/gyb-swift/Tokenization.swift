@@ -27,7 +27,7 @@ struct TemplateToken {
 /// Tokenizes template text into literal text, substitutions, code blocks, code lines, and symbols.
 // Note: The Python version uses a complex regex (tokenize_re). The Swift version uses
 // a character-by-character state machine which is more maintainable and handles Swift syntax correctly.
-struct TemplateTokenizer {
+struct TemplateTokens {
     private let text: String
     private var position: String.Index
     
