@@ -175,7 +175,7 @@ class ParseContext {
     
     /// Returns executable code from %-lines with leading % and indentation removed.
     private func extractCodeFromLines(_ text: String) -> String {
-        text.split(separator: "\n", omittingEmptySubsequences: false)
+        text.split(omittingEmptySubsequences: false) { $0.isNewline }
             .map { line -> String in
                 var trimmed = String(line)
                 // Remove leading whitespace and %
