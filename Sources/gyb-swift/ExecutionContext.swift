@@ -3,7 +3,7 @@ import Foundation
 // MARK: - Execution Context
 
 /// Maintains variable bindings, output text, and line directives for executing template code.
-class ExecutionContext {
+struct ExecutionContext {
     /// The accumulated output text.
     var resultText: [String] = []
     
@@ -33,8 +33,8 @@ class ExecutionContext {
     }
     
     /// Returns a new context sharing bindings but with __children__ available.
-    func createChildContext(children: [ASTNode]) -> ExecutionContext {
-        let child = ExecutionContext(
+    mutating func createChildContext(children: [ASTNode]) -> ExecutionContext {
+        var child = ExecutionContext(
             filename: filename,
             lineDirective: lineDirective,
             bindings: bindings
@@ -44,7 +44,7 @@ class ExecutionContext {
     }
     
     /// Emits a line directive for `line` if needed.
-    private func emitLineDirective(_ line: Int) {
+    private mutating func emitLineDirective(_ line: Int) {
         guard !lineDirective.isEmpty && line != lastEmittedLine else { return }
         
         let directive = lineDirective
@@ -56,7 +56,7 @@ class ExecutionContext {
     }
     
     /// Compiles and executes Swift `code` with access to bindings.
-    func executeCode(_ code: String, atLine line: Int) throws {
+    mutating func executeCode(_ code: String, atLine line: Int) throws {
         emitLineDirective(line)
         
         // For __children__ support in block code
@@ -74,20 +74,18 @@ class ExecutionContext {
         // For this translation, we'll use a simplified approach that
         // handles the common patterns in gyb templates.
         
-        try executeSwiftCodeDynamically(code, bindings: bindings, context: self)
+        try executeSwiftCodeDynamically(code, bindings: bindings, context: &self)
     }
     
     /// Returns the result of evaluating Swift `expression`.
-    func evaluateExpression(_ expression: String, atLine line: Int) throws -> Any {
+    mutating func evaluateExpression(_ expression: String, atLine line: Int) throws -> Any {
         emitLineDirective(line)
         return try evaluateSwiftExpression(expression, bindings: bindings)
     }
 }
 
-// MARK: - Child Executor
-
 /// Allows block code to execute children via __children__[0].execute(__context__).
-class ChildExecutor {
+struct ChildExecutor {
     let children: [ASTNode]
     let context: ExecutionContext
     
@@ -100,8 +98,8 @@ class ChildExecutor {
         ChildExecutor(children: [children[index]], context: context)
     }
     
-    func execute(_ context: ExecutionContext) throws {
-        try children.forEach { try $0.execute(context) }
+    func execute(_ context: inout ExecutionContext) throws {
+        try children.forEach { try $0.execute(&context) }
     }
 }
 
@@ -111,7 +109,7 @@ class ChildExecutor {
 private func executeSwiftCodeDynamically(
     _ code: String,
     bindings: [String: Any],
-    context: ExecutionContext
+    context: inout ExecutionContext
 ) throws {
     // Create a temporary directory for compilation
     let tempDir = FileManager.default.temporaryDirectory
@@ -188,8 +186,8 @@ private func evaluateSwiftExpression(
     // Create code that prints the expression result
     let code = "print(\(expression), terminator: \"\")"
     
-    let tempContext = ExecutionContext(bindings: bindings)
-    try executeSwiftCodeDynamically(code, bindings: bindings, context: tempContext)
+    var tempContext = ExecutionContext(bindings: bindings)
+    try executeSwiftCodeDynamically(code, bindings: bindings, context: &tempContext)
     
     return tempContext.resultText.joined()
 }

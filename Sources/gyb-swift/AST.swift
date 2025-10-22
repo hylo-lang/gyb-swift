@@ -5,17 +5,17 @@ import Foundation
 /// A node in the template abstract syntax tree.
 protocol ASTNode: CustomStringConvertible {
     /// Executes the node, appending its output to `context.resultText`.
-    func execute(_ context: ExecutionContext) throws
+    func execute(_ context: inout ExecutionContext) throws
 }
 
 // MARK: - Literal Node
 
-/// Fixed text that appears directly in the output.
+/// Literal text from the template.
 struct LiteralNode: ASTNode {
     let text: String
     let line: Int
     
-    func execute(_ context: ExecutionContext) throws {
+    func execute(_ context: inout ExecutionContext) throws {
         context.resultText.append(text)
     }
     
@@ -31,7 +31,7 @@ struct CodeNode: ASTNode {
     let code: String
     let line: Int
     
-    func execute(_ context: ExecutionContext) throws {
+    func execute(_ context: inout ExecutionContext) throws {
         try context.executeCode(code, atLine: line)
     }
     
@@ -47,7 +47,7 @@ struct SubstitutionNode: ASTNode {
     let expression: String
     let line: Int
     
-    func execute(_ context: ExecutionContext) throws {
+    func execute(_ context: inout ExecutionContext) throws {
         let result = try context.evaluateExpression(expression, atLine: line)
         context.resultText.append(String(describing: result))
     }
@@ -71,15 +71,15 @@ struct BlockNode: ASTNode {
         self.line = line
     }
     
-    func execute(_ context: ExecutionContext) throws {
+    func execute(_ context: inout ExecutionContext) throws {
         if let code = code {
             // Execute code that may call children
-            let childContext = context.createChildContext(children: children)
+            var childContext = context.createChildContext(children: children)
             try childContext.executeCode(code, atLine: line)
             context.resultText.append(contentsOf: childContext.resultText)
         } else {
             // Execute children directly
-            try children.forEach { try $0.execute(context) }
+            try children.forEach { try $0.execute(&context) }
         }
     }
     
@@ -98,7 +98,7 @@ struct BlockNode: ASTNode {
 // MARK: - Parse Context
 
 /// Maintains parsing state while converting templates to AST.
-class ParseContext {
+struct ParseContext {
     let filename: String
     let templateText: String
     private(set) var position: String.Index
@@ -119,13 +119,13 @@ class ParseContext {
     /// Advances position to `index`.
     ///
     /// - Precondition: `index >= position`.
-    func advance(to index: String.Index) {
+    mutating func advance(to index: String.Index) {
         assert(index >= position)
         position = index
     }
     
     /// Returns AST nodes parsed from the template.
-    func parseNodes() throws -> [ASTNode] {
+    mutating func parseNodes() throws -> [ASTNode] {
         var nodes: [ASTNode] = []
         var tokenIterator = TemplateTokens(text: templateText)
         
@@ -260,7 +260,7 @@ class ParseContext {
 
 /// Returns an AST from template `text`.
 func parseTemplate(filename: String, text: String) throws -> BlockNode {
-    let context = ParseContext(filename: filename, text: text)
+    var context = ParseContext(filename: filename, text: text)
     let nodes = try context.parseNodes()
     return BlockNode(children: nodes, line: 1)
 }
