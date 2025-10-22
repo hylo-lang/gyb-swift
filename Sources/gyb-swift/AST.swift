@@ -12,7 +12,7 @@ protocol ASTNode: CustomStringConvertible {
 
 /// Literal text from the template.
 struct LiteralNode: ASTNode {
-    let text: String
+    let text: Substring
     let line: Int
     
     func execute(_ context: inout ExecutionContext) throws {
@@ -20,7 +20,7 @@ struct LiteralNode: ASTNode {
     }
     
     var description: String {
-        "Literal: \(text.prefix(20))\(text.count > 20 ? "..." : "")"
+        "Literal: \(text.prefix(20))\(text.dropFirst(20).isEmpty ? "" : "...")"
     }
 }
 
@@ -28,7 +28,7 @@ struct LiteralNode: ASTNode {
 
 /// Swift code to be executed, which may produce output via print().
 struct CodeNode: ASTNode {
-    let code: String
+    let code: Substring
     let line: Int
     
     func execute(_ context: inout ExecutionContext) throws {
@@ -36,7 +36,7 @@ struct CodeNode: ASTNode {
     }
     
     var description: String {
-        "Code: {\(code.prefix(30))\(code.count > 30 ? "..." : "")}"
+        "Code: {\(code.prefix(30))\(code.dropFirst(30).isEmpty ? "" : "...")}"
     }
 }
 
@@ -44,12 +44,12 @@ struct CodeNode: ASTNode {
 
 /// A ${...} expression whose result is converted to text and inserted into the output.
 struct SubstitutionNode: ASTNode {
-    let expression: String
+    let expression: Substring
     let line: Int
     
     func execute(_ context: inout ExecutionContext) throws {
         let result = try context.evaluateExpression(expression, atLine: line)
-        context.resultText.append(String(describing: result))
+        context.resultText.append(String(describing: result)[...])
     }
     
     var description: String {
@@ -61,11 +61,11 @@ struct SubstitutionNode: ASTNode {
 
 /// A sequence of child nodes, possibly with code controlling their execution (e.g., loop or conditional).
 struct BlockNode: ASTNode {
-    let code: String?
+    let code: Substring?
     let children: [ASTNode]
     let line: Int
     
-    init(code: String? = nil, children: [ASTNode], line: Int = 1) {
+    init(code: Substring? = nil, children: [ASTNode], line: Int = 1) {
         self.code = code
         self.children = children
         self.line = line
@@ -86,7 +86,7 @@ struct BlockNode: ASTNode {
     var description: String {
         let parts = [
             "Block: [",
-            code.map { "\n  Code: {\($0.prefix(40))\($0.count > 40 ? "..." : "")}" } ?? "",
+            code.map { "\n  Code: {\($0.prefix(40))\($0.dropFirst(40).isEmpty ? "" : "...")}" } ?? "",
             "\n  [\n",
             children.map { "    \($0.description.replacingOccurrences(of: "\n", with: "\n    "))\n" }.joined(),
             "  ]\n]"
@@ -140,8 +140,7 @@ struct ParseContext {
                 
             case .substitutionOpen:
                 // Extract expression between ${ and }
-                let content = String(token.text.dropFirst(2).dropLast())
-                nodes.append(SubstitutionNode(expression: content, line: line))
+                nodes.append(SubstitutionNode(expression: token.text.dropFirst(2).dropLast(), line: line))
                 
             case .gybLines:
                 // Parse %-lines
@@ -156,7 +155,6 @@ struct ParseContext {
                     var blockChildren: [ASTNode] = []
                     
                     while let nextToken = tokenIterator.next() {
-                        advance(to: nextToken.startIndex)
                         let childLine = currentLine
                         
                         if nextToken.kind == .gybLinesClose {
@@ -171,8 +169,7 @@ struct ParseContext {
                                 blockChildren.append(LiteralNode(text: nextToken.text, line: childLine))
                             }
                         case .substitutionOpen:
-                            let expr = String(nextToken.text.dropFirst(2).dropLast())
-                            blockChildren.append(SubstitutionNode(expression: expr, line: childLine))
+                            blockChildren.append(SubstitutionNode(expression: nextToken.text.dropFirst(2).dropLast(), line: childLine))
                         case .gybLines:
                             // Check if this nested line also has unmatched braces
                             let childCode = extractCodeFromLines(nextToken.text)
@@ -183,7 +180,6 @@ struct ParseContext {
                                 // Nested block - recursively collect its children
                                 var nestedChildren: [ASTNode] = []
                                 while let nestedToken = tokenIterator.next() {
-                                    advance(to: nestedToken.startIndex)
                                     if nestedToken.kind == .gybLinesClose {
                                         break
                                     }
@@ -194,10 +190,9 @@ struct ParseContext {
                                             nestedChildren.append(LiteralNode(text: nestedToken.text, line: currentLine))
                                         }
                                     case .substitutionOpen:
-                                        let expr = String(nestedToken.text.dropFirst(2).dropLast())
-                                        nestedChildren.append(SubstitutionNode(expression: expr, line: currentLine))
+                                        nestedChildren.append(SubstitutionNode(expression: nestedToken.text.dropFirst(2).dropLast(), line: currentLine))
                                     case .symbol:
-                                        nestedChildren.append(LiteralNode(text: String(nestedToken.text.first!), line: currentLine))
+                                        nestedChildren.append(LiteralNode(text: nestedToken.text.prefix(1), line: currentLine))
                                     default:
                                         break
                                     }
@@ -207,11 +202,9 @@ struct ParseContext {
                                 blockChildren.append(CodeNode(code: childCode, line: childLine))
                             }
                         case .gybBlockOpen:
-                            let blockCode = String(nextToken.text.dropFirst(2).dropLast(2))
-                            blockChildren.append(CodeNode(code: blockCode, line: childLine))
+                            blockChildren.append(CodeNode(code: nextToken.text.dropFirst(2).dropLast(2), line: childLine))
                         case .symbol:
-                            let char = String(nextToken.text.first!)
-                            blockChildren.append(LiteralNode(text: char, line: childLine))
+                            blockChildren.append(LiteralNode(text: nextToken.text.prefix(1), line: childLine))
                         default:
                             break
                         }
@@ -231,8 +224,7 @@ struct ParseContext {
                 
             case .gybBlockOpen:
                 // Extract code between %{ and }%
-                let content = String(token.text.dropFirst(2).dropLast(2))
-                nodes.append(CodeNode(code: content, line: line))
+                nodes.append(CodeNode(code: token.text.dropFirst(2).dropLast(2), line: line))
                 
             case .gybBlockClose:
                 // }% - should not appear in isolation
@@ -240,8 +232,7 @@ struct ParseContext {
                 
             case .symbol:
                 // %% or $$ becomes single % or $
-                let char = String(token.text.first!)
-                nodes.append(LiteralNode(text: char, line: line))
+                nodes.append(LiteralNode(text: token.text.prefix(1), line: line))
             }
         }
         
@@ -249,12 +240,12 @@ struct ParseContext {
     }
     
     /// Returns executable code from %-lines with leading % and indentation removed.
-    private func extractCodeFromLines(_ text: String) -> String {
+    private func extractCodeFromLines(_ text: Substring) -> Substring {
         text.split(omittingEmptySubsequences: false) { $0.isNewline }
             .map { line in
                 line.drop { $0 != "%" }.dropFirst().drop(while: \.isWhitespace)
             }
-            .joined(separator: "\n")
+            .joined(separator: "\n")[...]
     }
 }
 

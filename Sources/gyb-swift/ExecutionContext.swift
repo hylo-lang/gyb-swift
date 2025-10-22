@@ -5,7 +5,7 @@ import Foundation
 /// Maintains variable bindings, output text, and line directives for executing template code.
 struct ExecutionContext {
     /// The accumulated output text.
-    var resultText: [String] = []
+    var resultText: [Substring] = []
     
     /// Variable bindings available to template code.
     var bindings: [String: Any]
@@ -51,12 +51,12 @@ struct ExecutionContext {
             .replacingOccurrences(of: "%(file)s", with: filename)
             .replacingOccurrences(of: "%(line)d", with: "\(line)")
         
-        resultText.append(directive + "\n")
+        resultText.append((directive + "\n")[...])
         lastEmittedLine = line
     }
     
     /// Compiles and executes Swift `code` with access to bindings.
-    mutating func executeCode(_ code: String, atLine line: Int) throws {
+    mutating func executeCode(_ code: Substring, atLine line: Int) throws {
         emitLineDirective(line)
         
         // For __children__ support in block code
@@ -78,9 +78,9 @@ struct ExecutionContext {
     }
     
     /// Returns the result of evaluating Swift `expression`.
-    mutating func evaluateExpression(_ expression: String, atLine line: Int) throws -> Any {
+    mutating func evaluateExpression(_ expression: Substring, atLine line: Int) throws -> Any {
         emitLineDirective(line)
-        return try evaluateSwiftExpression(expression, bindings: bindings)
+        return try evaluateSwiftExpression(String(expression), bindings: bindings)
     }
 }
 
@@ -107,7 +107,7 @@ struct ChildExecutor {
 
 /// Compiles and executes Swift `code` by creating a temporary file, compiling with swiftc, and running it.
 private func executeSwiftCodeDynamically(
-    _ code: String,
+    _ code: Substring,
     bindings: [String: Any],
     context: inout ExecutionContext
 ) throws {
@@ -174,7 +174,7 @@ private func executeSwiftCodeDynamically(
     // Capture output
     let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
     if let output = String(data: outputData, encoding: .utf8), !output.isEmpty {
-        context.resultText.append(output)
+        context.resultText.append(output[...])
     }
 }
 
@@ -187,7 +187,7 @@ private func evaluateSwiftExpression(
     let code = "print(\(expression), terminator: \"\")"
     
     var tempContext = ExecutionContext(bindings: bindings)
-    try executeSwiftCodeDynamically(code, bindings: bindings, context: &tempContext)
+    try executeSwiftCodeDynamically(code[...], bindings: bindings, context: &tempContext)
     
     return tempContext.resultText.joined()
 }

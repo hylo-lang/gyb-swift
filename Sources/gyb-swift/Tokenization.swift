@@ -18,8 +18,7 @@ struct TemplateToken {
     }
     
     let kind: Kind
-    let text: String
-    let startIndex: String.Index
+    let text: Substring
 }
 
 // MARK: - Template Tokenization
@@ -28,227 +27,186 @@ struct TemplateToken {
 // Note: The Python version uses a complex regex (tokenize_re). The Swift version uses
 // a character-by-character state machine which is more maintainable and handles Swift syntax correctly.
 struct TemplateTokens {
-    private let text: String
-    private var position: String.Index
+    private var remainingText: Substring
     
     init(text: String) {
-        self.text = text
-        self.position = text.startIndex
+        self.remainingText = text[...]
     }
     
     /// Returns the next token, or nil when exhausted.
     mutating func next() -> TemplateToken? {
-        guard position < text.endIndex else { return nil }
-        
-        let startPos = position
-        let char = text[position]
+        guard let char = remainingText.first else { return nil }
         
         // Check for special sequences
         if char == "$" {
-            return handleDollar(startPos: startPos)
+            return handleDollar()
         } else if char == "%" {
-            return handlePercent(startPos: startPos)
+            return handlePercent()
         } else {
-            return handleLiteral(startPos: startPos)
+            return handleLiteral()
         }
     }
     
     /// Handles $ character (substitution or escaped $).
-    private mutating func handleDollar(startPos: String.Index) -> TemplateToken? {
-        let nextPos = text.index(after: position)
-        guard nextPos < text.endIndex else {
-            position = text.endIndex
-            return TemplateToken(kind: .literal, text: "$", startIndex: startPos)
+    private mutating func handleDollar() -> TemplateToken? {
+        let rest = remainingText.dropFirst()
+        guard let nextChar = rest.first else {
+            let token = TemplateToken(kind: .literal, text: remainingText.prefix(1))
+            remainingText = rest
+            return token
         }
-        
-        let nextChar = text[nextPos]
         
         if nextChar == "$" {
             // $$ -> literal $
-            position = text.index(after: nextPos)
-            return TemplateToken(kind: .symbol, text: "$$", startIndex: startPos)
+            let token = TemplateToken(kind: .symbol, text: remainingText.prefix(2))
+            remainingText = rest.dropFirst()
+            return token
         } else if nextChar == "{" {
             // ${...} -> substitution
-            return handleSubstitution(startPos: startPos)
+            return handleSubstitution()
         } else {
             // Just a literal $
-            position = nextPos
-            return TemplateToken(kind: .literal, text: "$", startIndex: startPos)
+            let token = TemplateToken(kind: .literal, text: remainingText.prefix(1))
+            remainingText = rest
+            return token
         }
     }
     
     /// Handles % character (code lines, blocks, or escaped %).
-    private mutating func handlePercent(startPos: String.Index) -> TemplateToken? {
-        let nextPos = text.index(after: position)
-        guard nextPos < text.endIndex else {
-            position = text.endIndex
-            return TemplateToken(kind: .literal, text: "%", startIndex: startPos)
+    private mutating func handlePercent() -> TemplateToken? {
+        let rest = remainingText.dropFirst()
+        guard let nextChar = rest.first else {
+            let token = TemplateToken(kind: .literal, text: remainingText.prefix(1))
+            remainingText = rest
+            return token
         }
-        
-        let nextChar = text[nextPos]
         
         if nextChar == "%" {
             // %% -> literal %
-            position = text.index(after: nextPos)
-            return TemplateToken(kind: .symbol, text: "%%", startIndex: startPos)
+            let token = TemplateToken(kind: .symbol, text: remainingText.prefix(2))
+            remainingText = rest.dropFirst()
+            return token
         } else if nextChar == "{" {
             // %{...}% -> code block
-            return handleCodeBlock(startPos: startPos)
+            return handleCodeBlock()
         } else if nextChar == " " || nextChar == "\t" || nextChar.isNewline {
             // Check if it's %end
-            return handleCodeLine(startPos: startPos)
+            return handleCodeLine()
         } else {
             // % at start of line followed by code
-            return handleCodeLine(startPos: startPos)
+            return handleCodeLine()
         }
     }
     
     /// Handles ${...} substitution using Swift tokenization for `}` in strings.
-    private mutating func handleSubstitution(startPos: String.Index) -> TemplateToken? {
+    private mutating func handleSubstitution() -> TemplateToken? {
         // Skip ${
-        let codeStart = text.index(position, offsetBy: 2)
+        let codePart = String(remainingText.dropFirst(2))
         
         // Use Swift tokenizer to find the real closing }
-        // This handles strings, comments, and nested braces correctly
         let closeIndex = tokenizeSwiftToUnmatchedCloseCurly(
-            sourceText: text,
-            start: codeStart
+            sourceText: codePart,
+            start: codePart.startIndex
         )
         
-        if closeIndex < text.endIndex {
-            position = text.index(after: closeIndex)
-            let tokenText = String(text[startPos..<position])
-            return TemplateToken(kind: .substitutionOpen, text: tokenText, startIndex: startPos)
+        if closeIndex < codePart.endIndex {
+            // Include ${ + code + }
+            let consumeCount = 2 + codePart.distance(from: codePart.startIndex, to: closeIndex) + 1
+            let tokenText = remainingText.prefix(consumeCount)
+            remainingText = remainingText.dropFirst(consumeCount)
+            return TemplateToken(kind: .substitutionOpen, text: tokenText)
         }
         
         // Unclosed substitution - treat as literal
-        position = text.index(after: startPos)
-        return TemplateToken(kind: .literal, text: "$", startIndex: startPos)
+        let token = TemplateToken(kind: .literal, text: remainingText.prefix(1))
+        remainingText = remainingText.dropFirst()
+        return token
     }
     
     /// Handles %{...}% code block using Swift tokenization for `}%` in strings.
-    private mutating func handleCodeBlock(startPos: String.Index) -> TemplateToken? {
+    private mutating func handleCodeBlock() -> TemplateToken? {
         // Skip %{
-        let codeStart = text.index(position, offsetBy: 2)
+        let codePart = String(remainingText.dropFirst(2))
         
         // Use Swift tokenizer to find the real closing }
         let closeIndex = tokenizeSwiftToUnmatchedCloseCurly(
-            sourceText: text,
-            start: codeStart
+            sourceText: codePart,
+            start: codePart.startIndex
         )
         
-        if closeIndex < text.endIndex {
-            // Check if this is followed by %
-            let afterClose = text.index(after: closeIndex)
-            if afterClose < text.endIndex && text[afterClose] == "%" {
-                position = text.index(after: afterClose)
+        if closeIndex < codePart.endIndex {
+            let afterClose = codePart.index(after: closeIndex)
+            if afterClose < codePart.endIndex && codePart[afterClose] == "%" {
+                // Include %{ + code + }%
+                var consumeCount = 2 + codePart.distance(from: codePart.startIndex, to: codePart.index(after: afterClose))
+                
                 // Skip trailing newline if present
-                if position < text.endIndex && text[position].isNewline {
-                    position = text.index(after: position)
+                let afterToken = remainingText.dropFirst(consumeCount)
+                if afterToken.first?.isNewline == true {
+                    consumeCount += 1
                 }
-                let tokenText = String(text[startPos..<position])
-                return TemplateToken(kind: .gybBlockOpen, text: tokenText, startIndex: startPos)
+                
+                let tokenText = remainingText.prefix(consumeCount)
+                remainingText = remainingText.dropFirst(consumeCount)
+                return TemplateToken(kind: .gybBlockOpen, text: tokenText)
             }
         }
         
         // Unclosed block - treat as literal
-        position = text.index(after: startPos)
-        return TemplateToken(kind: .literal, text: "%", startIndex: startPos)
+        let token = TemplateToken(kind: .literal, text: remainingText.prefix(1))
+        remainingText = remainingText.dropFirst()
+        return token
     }
     
     /// Handles % code lines.
-    private mutating func handleCodeLine(startPos: String.Index) -> TemplateToken? {
-        // Skip initial whitespace at start of line
-        var lineStart = startPos
-        while lineStart > text.startIndex {
-            let prev = text.index(before: lineStart)
-            let char = text[prev]
-            if char.isNewline {
-                break
-            }
-            if !char.isWhitespace {
-                // Not at start of line with only whitespace
-                position = text.index(after: startPos)
-                return TemplateToken(kind: .literal, text: "%", startIndex: startPos)
-            }
-            lineStart = prev
-        }
-        
-        // Skip %
-        position = text.index(after: position)
-        
-        // Skip optional whitespace after %
-        while position < text.endIndex && (text[position] == " " || text[position] == "\t") {
-            position = text.index(after: position)
+    private mutating func handleCodeLine() -> TemplateToken? {
+        // Skip % and optional whitespace to check what follows
+        var afterPercent = remainingText.dropFirst()
+        while let char = afterPercent.first, char == " " || char == "\t" {
+            afterPercent = afterPercent.dropFirst()
         }
         
         // Check for % } (closing brace line - Swift's equivalent to Python's %end)
-        let remaining = String(text[position...])
-        if remaining.hasPrefix("}") {
-            let endPos = text.index(after: position)
-            // Check it's followed by whitespace, comment, or end of line
-            if endPos >= text.endIndex || text[endPos].isWhitespace || text[endPos] == "#" || text[endPos].isNewline {
-                // Find end of line
-                while position < text.endIndex && !text[position].isNewline {
-                    position = text.index(after: position)
-                }
-                if position < text.endIndex {
-                    position = text.index(after: position)
-                }
-                return TemplateToken(kind: .gybLinesClose, text: "% }", startIndex: startPos)
+        if afterPercent.first == "}" {
+            let afterBrace = afterPercent.dropFirst()
+            if afterBrace.first?.isWhitespace == true || afterBrace.first == "#" || afterBrace.isEmpty {
+                // Consume up to and including the newline
+                let line = remainingText.prefix(while: { !$0.isNewline })
+                let afterLine = remainingText.dropFirst(line.count)
+                remainingText = afterLine.isEmpty ? afterLine : afterLine.dropFirst()
+                return TemplateToken(kind: .gybLinesClose, text: "% }")
             }
         }
         
         // Also support %end for compatibility with Python templates
-        if remaining.hasPrefix("end") {
-            let endPos = text.index(position, offsetBy: 3)
-            if endPos >= text.endIndex || text[endPos].isWhitespace || text[endPos] == "#" {
-                while position < text.endIndex && !text[position].isNewline {
-                    position = text.index(after: position)
-                }
-                if position < text.endIndex {
-                    position = text.index(after: position)
-                }
-                return TemplateToken(kind: .gybLinesClose, text: "%end", startIndex: startPos)
+        if afterPercent.starts(with: "end") {
+            let afterEnd = afterPercent.dropFirst(3)
+            if afterEnd.first?.isWhitespace == true || afterEnd.first == "#" || afterEnd.isEmpty {
+                let line = remainingText.prefix(while: { !$0.isNewline })
+                let afterLine = remainingText.dropFirst(line.count)
+                remainingText = afterLine.isEmpty ? afterLine : afterLine.dropFirst()
+                return TemplateToken(kind: .gybLinesClose, text: "%end")
             }
         }
         
         // Regular code line - read to end of line
-        while position < text.endIndex && !text[position].isNewline {
-            position = text.index(after: position)
-        }
+        let line = remainingText.prefix(while: { !$0.isNewline })
+        let afterLine = remainingText.dropFirst(line.count)
+        remainingText = afterLine.isEmpty ? afterLine : afterLine.dropFirst()
         
-        let tokenText = String(text[lineStart..<position])
-        
-        if position < text.endIndex {
-            position = text.index(after: position)
-        }
-        
-        return TemplateToken(kind: .gybLines, text: tokenText, startIndex: startPos)
+        return TemplateToken(kind: .gybLines, text: line)
     }
     
     /// Handles literal text.
-    private mutating func handleLiteral(startPos: String.Index) -> TemplateToken? {
-        var endPos = position
-        
+    private mutating func handleLiteral() -> TemplateToken? {
         // Read until we hit $ or %
-        while endPos < text.endIndex {
-            let char = text[endPos]
-            if char == "$" || char == "%" {
-                break
-            }
-            endPos = text.index(after: endPos)
-        }
+        let literal = remainingText.prefix(while: { $0 != "$" && $0 != "%" })
         
-        if endPos == position {
-            // Single character
-            endPos = text.index(after: position)
-        }
+        // If we got nothing, take one character (shouldn't happen but be safe)
+        let tokenText = literal.isEmpty ? remainingText.prefix(1) : literal
+        remainingText = remainingText.dropFirst(tokenText.count)
         
-        let tokenText = String(text[position..<endPos])
-        position = endPos
-        
-        return TemplateToken(kind: .literal, text: tokenText, startIndex: startPos)
+        return TemplateToken(kind: .literal, text: tokenText)
     }
 }
 
