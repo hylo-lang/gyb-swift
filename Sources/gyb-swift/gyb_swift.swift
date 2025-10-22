@@ -84,18 +84,11 @@ struct GYBSwift: ParsableCommand {
         """)
     var lineDirective: String = "//# sourceLocation(file: \"%(file)s\", line: %(line)d)"
     
-    @Flag(help: "Run self-tests")
-    var test: Bool = false
-    
     @Flag(help: "Dump the parsed template AST to stdout")
     var dump: Bool = false
     
     /// Reads the template, parses it, executes it with bindings, and writes output.
     mutating func run() throws {
-        if test {
-            try runTests()
-            return
-        }
         
         // Parse variable bindings
         let bindings: [String: Any] = try Dictionary(
@@ -153,81 +146,6 @@ struct GYBSwift: ParsableCommand {
         } else {
             let outputURL = URL(fileURLWithPath: output)
             try result.write(to: outputURL, atomically: true, encoding: .utf8)
-        }
-    }
-    
-    /// Runs self-tests.
-    ///
-    /// - Throws: If any tests fail.
-    private func runTests() throws {
-        print("Running self-tests...")
-        
-        // Test string utilities
-        testGetLineStarts()
-        testStripTrailingNewline()
-        testSplitLines()
-        
-        // Test simple template
-        testSimpleTemplate()
-        testSubstitution()
-        testCodeBlock()
-        
-        print("All tests passed! ✓")
-    }
-    
-    private func testGetLineStarts() {
-        let text = "line1\nline2\nline3"
-        let starts = getLineStarts(text)
-        assert(starts.count == 4, "Expected 4 line starts")
-        print("✓ getLineStarts")
-    }
-    
-    private func testStripTrailingNewline() {
-        assert(stripTrailingNewline("hello\n") == "hello")
-        assert(stripTrailingNewline("hello") == "hello")
-        print("✓ stripTrailingNewline")
-    }
-    
-    private func testSplitLines() {
-        let lines = splitLines("a\nb\nc")
-        assert(lines.count == 3)
-        assert(lines[0] == "a\n")
-        print("✓ splitLines")
-    }
-    
-    private func testSimpleTemplate() {
-        do {
-            let text = "Hello, World!"
-            let ast = try parseTemplate(filename: "test", text: text)
-            let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
-            assert(result == "Hello, World!", "Expected 'Hello, World!' but got '\(result)'")
-            print("✓ simple template")
-        } catch {
-            print("✗ simple template: \(error)")
-        }
-    }
-    
-    private func testSubstitution() {
-        do {
-            let text = "The answer is ${x}"
-            let ast = try parseTemplate(filename: "test", text: text)
-            let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: ["x": 42])
-            assert(result.contains("42"), "Expected result to contain '42' but got '\(result)'")
-            print("✓ substitution")
-        } catch {
-            print("✗ substitution: \(error)")
-        }
-    }
-    
-    private func testCodeBlock() {
-        do {
-            let text = "%{ let x = 10 }%\nValue: ${x}"
-            let ast = try parseTemplate(filename: "test", text: text)
-            let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
-            assert(result.contains("10"), "Expected result to contain '10' but got '\(result)'")
-            print("✓ code block")
-        } catch {
-            print("✗ code block: \(error)")
         }
     }
 }
