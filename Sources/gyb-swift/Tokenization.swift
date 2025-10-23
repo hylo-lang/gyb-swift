@@ -219,10 +219,11 @@ func tokenizeSwiftToUnmatchedCloseCurly(
     sourceText: String,
     start: String.Index
 ) -> String.Index {
-    let substring = String(sourceText[start...])
+    // Keep as Substring to preserve index relationship with sourceText
+    let substringSlice = sourceText[start...]
     
-    // Parse the Swift code
-    let source = Parser.parse(source: substring)
+    // Parse the Swift code (SwiftSyntax requires a String)
+    let source = Parser.parse(source: String(substringSlice))
     
     // Walk the syntax tree looking for braces
     class BraceVisitor: SyntaxVisitor {
@@ -254,23 +255,11 @@ func tokenizeSwiftToUnmatchedCloseCurly(
     visitor.walk(source)
     
     if let utf8Offset = visitor.closeBraceOffset {
-        // Convert UTF8 offset to character offset in substring
-        // Count characters until we reach the character at the UTF8 offset
-        var charCount = 0
-        var currentUTF8Offset = 0
-        
-        for char in substring {
-            if currentUTF8Offset == utf8Offset {
-                // Found the character at the target offset
-                break
-            }
-            currentUTF8Offset += char.utf8.count
-            charCount += 1
-        }
-        
-        // Apply character offset from start in original text
-        if let absoluteIndex = sourceText.index(start, offsetBy: charCount, limitedBy: sourceText.endIndex) {
-            return absoluteIndex
+        // Convert UTF-8 offset to String.Index efficiently using the Substring's utf8 view
+        // The Substring shares indices with the original String, so this index is already valid!
+        let utf8Index = substringSlice.utf8.index(substringSlice.utf8.startIndex, offsetBy: utf8Offset)
+        if let stringIndex = String.Index(utf8Index, within: substringSlice) {
+            return stringIndex  // Already a valid index into sourceText!
         }
     }
     
