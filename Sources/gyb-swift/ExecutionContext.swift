@@ -41,49 +41,82 @@ enum GYBError: Error, CustomStringConvertible {
 
 // MARK: - AST to Swift Code Conversion
 
-/// Converts an AST node to executable Swift code.
-// Literal nodes → print() statements
-// Code nodes (% lines) → literal Swift code  
-// Substitution nodes (${expr}) → print(expr, terminator: "")
-func astNodeToSwiftCode(_ node: ASTNode, indent: String = "") -> String {
-    switch node {
-    case let literal as LiteralNode:
-        // Escape for Swift string literal
-        let escaped = literal.text
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "\n", with: "\\n")
-            .replacingOccurrences(of: "\t", with: "\\t")
-            .replacingOccurrences(of: "\r", with: "\\r")
-        return indent + "print(\"\(escaped)\", terminator: \"\")"
-        
-    case let code as CodeNode:
-        // % lines are literal Swift code
-        return indent + code.code
-        
-    case let subst as SubstitutionNode:
-        // ${expr} → print(expr, terminator: "")
-        return indent + "print(\(subst.expression), terminator: \"\")"
-        
-    case let block as BlockNode:
-        if let code = block.code {
-            // Block with control code (wraps children)
-            var result = indent + code + "\n"
-            result += block.children.map { astNodeToSwiftCode($0, indent: indent + "    ") }.joined(separator: "\n")
-            // Add closing brace if code has unmatched {
-            let openBraces = code.filter { $0 == "{" }.count
-            let closeBraces = code.filter { $0 == "}" }.count
-            if openBraces > closeBraces {
-                result += "\n" + indent + "}"
+/// Converts an array of AST nodes to Swift code, batching literals and substitutions into multiline strings.
+func astNodesToSwiftCode(_ nodes: [ASTNode], indent: String = "") -> String {
+    var result: [String] = []
+    var textBatch: [String] = []  // Accumulate literal text with \() interpolations
+    
+    func flushTextBatch() {
+        guard !textBatch.isEmpty else { return }
+        let combined = textBatch.joined()
+        if !combined.isEmpty {
+            // Escape """ and \ for multiline string literal
+            var content = combined
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "\"\"\"", with: "\\\"\\\"\\\"")
+                // Unescape our interpolation markers back to single backslash
+                .replacingOccurrences(of: "\\\\(", with: "\\(")
+            
+            // Indent each line to match closing delimiter
+            if !indent.isEmpty {
+                content = content.split(separator: "\n", omittingEmptySubsequences: false)
+                    .map { indent + $0 }
+                    .joined(separator: "\n")
             }
-            return result
-        } else {
-            // Simple sequence
-            return block.children.map { astNodeToSwiftCode($0, indent: indent) }.joined(separator: "\n")
+            
+            result.append(indent + "print(\"\"\"\n\(content)\n\(indent)\"\"\", terminator: \"\")")
         }
-        
-    default:
-        return ""
+        textBatch.removeAll()
+    }
+    
+    for node in nodes {
+        switch node {
+        case let literal as LiteralNode:
+            // Add to text batch - will be escaped later
+            textBatch.append(String(literal.text))
+            
+        case let subst as SubstitutionNode:
+            // Add as interpolation - use double backslash temporarily, will be fixed in flush
+            textBatch.append("\\(\(subst.expression))")
+            
+        case let code as CodeNode:
+            // Flush any pending text, then emit code
+            flushTextBatch()
+            result.append(indent + String(code.code))
+            
+        case let block as BlockNode:
+            if let code = block.code {
+                // Flush pending text, emit control flow
+                flushTextBatch()
+                result.append(indent + String(code))
+                result.append(astNodesToSwiftCode(block.children, indent: indent + "    "))
+                
+                // Add closing brace if code has unmatched {
+                let openBraces = code.filter { $0 == "{" }.count
+                let closeBraces = code.filter { $0 == "}" }.count
+                if openBraces > closeBraces {
+                    result.append(indent + "}")
+                }
+            } else {
+                // Simple sequence - process children inline
+                result.append(astNodesToSwiftCode(block.children, indent: indent))
+            }
+            
+        default:
+            break
+        }
+    }
+    
+    flushTextBatch()
+    return result.filter { !$0.isEmpty }.joined(separator: "\n")
+}
+
+/// Converts an AST node to executable Swift code.
+func astNodeToSwiftCode(_ node: ASTNode, indent: String = "") -> String {
+    if let block = node as? BlockNode {
+        return astNodesToSwiftCode(block.children, indent: indent)
+    } else {
+        return astNodesToSwiftCode([node], indent: indent)
     }
 }
 
