@@ -509,10 +509,6 @@ func components_instantiation() {
     // Test parse context
     let context = ParseContext(filename: "test", text: "content")
     #expect(context.filename == "test")
-    
-    // Test execution context
-    let execContext = ExecutionContext(filename: "test")
-    #expect(execContext.filename == "test")
 }
 
 @Test("AST node creation")

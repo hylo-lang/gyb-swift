@@ -3,10 +3,7 @@ import Foundation
 // MARK: - AST Node Protocol
 
 /// A node in the template abstract syntax tree.
-protocol ASTNode: CustomStringConvertible {
-    /// Executes the node, appending its output to `context.resultText`.
-    func execute(_ context: inout ExecutionContext) throws
-}
+protocol ASTNode: CustomStringConvertible {}
 
 // MARK: - Literal Node
 
@@ -14,10 +11,6 @@ protocol ASTNode: CustomStringConvertible {
 struct LiteralNode: ASTNode {
     let text: Substring
     let line: Int
-    
-    func execute(_ context: inout ExecutionContext) throws {
-        context.resultText.append(text)
-    }
     
     var description: String {
         "Literal: \(text.prefix(20))\(text.dropFirst(20).isEmpty ? "" : "...")"
@@ -31,10 +24,6 @@ struct CodeNode: ASTNode {
     let code: Substring
     let line: Int
     
-    func execute(_ context: inout ExecutionContext) throws {
-        try context.executeCode(code, atLine: line)
-    }
-    
     var description: String {
         "Code: {\(code.prefix(30))\(code.dropFirst(30).isEmpty ? "" : "...")}"
     }
@@ -46,11 +35,6 @@ struct CodeNode: ASTNode {
 struct SubstitutionNode: ASTNode {
     let expression: Substring
     let line: Int
-    
-    func execute(_ context: inout ExecutionContext) throws {
-        let result = try context.evaluateExpression(expression, atLine: line)
-        context.resultText.append(String(describing: result)[...])
-    }
     
     var description: String {
         "Substitution: ${\(expression)}"
@@ -69,18 +53,6 @@ struct BlockNode: ASTNode {
         self.code = code
         self.children = children
         self.line = line
-    }
-    
-    func execute(_ context: inout ExecutionContext) throws {
-        if let code = code {
-            // Execute code that may call children
-            var childContext = context.createChildContext(children: children)
-            try childContext.executeCode(code, atLine: line)
-            context.resultText.append(contentsOf: childContext.resultText)
-        } else {
-            // Execute children directly
-            try children.forEach { try $0.execute(&context) }
-        }
     }
     
     var description: String {
