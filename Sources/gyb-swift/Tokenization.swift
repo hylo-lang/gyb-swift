@@ -102,17 +102,14 @@ struct TemplateTokens {
     /// Handles ${...} substitution using Swift tokenization for `}` in strings.
     private mutating func handleSubstitution() -> TemplateToken? {
         // Skip ${
-        let codePart = String(remainingText.dropFirst(2))
+        let codePart = remainingText.dropFirst(2)
         
         // Use Swift tokenizer to find the real closing }
-        let closeIndex = tokenizeSwiftToUnmatchedCloseCurly(
-            sourceText: codePart,
-            start: codePart.startIndex
-        )
+        let closeIndex = tokenizeSwiftToUnmatchedCloseCurly(codePart)
         
         if closeIndex < codePart.endIndex {
             // Include ${ + code + }
-            let consumeCount = 2 + codePart.distance(from: codePart.startIndex, to: closeIndex) + 1
+            let consumeCount = remainingText.distance(from: remainingText.startIndex, to: closeIndex) + 1
             let tokenText = remainingText.prefix(consumeCount)
             remainingText = remainingText.dropFirst(consumeCount)
             return TemplateToken(kind: .substitutionOpen, text: tokenText)
@@ -127,19 +124,16 @@ struct TemplateTokens {
     /// Handles %{...}% code block using Swift tokenization for `}%` in strings.
     private mutating func handleCodeBlock() -> TemplateToken? {
         // Skip %{
-        let codePart = String(remainingText.dropFirst(2))
+        let codePart = remainingText.dropFirst(2)
         
         // Use Swift tokenizer to find the real closing }
-        let closeIndex = tokenizeSwiftToUnmatchedCloseCurly(
-            sourceText: codePart,
-            start: codePart.startIndex
-        )
+        let closeIndex = tokenizeSwiftToUnmatchedCloseCurly(codePart)
         
         if closeIndex < codePart.endIndex {
             let afterClose = codePart.index(after: closeIndex)
             if afterClose < codePart.endIndex && codePart[afterClose] == "%" {
                 // Include %{ + code + }%
-                var consumeCount = 2 + codePart.distance(from: codePart.startIndex, to: codePart.index(after: afterClose))
+                var consumeCount = remainingText.distance(from: remainingText.startIndex, to: codePart.index(after: afterClose))
                 
                 // Skip trailing newline if present
                 let afterToken = remainingText.dropFirst(consumeCount)
@@ -213,17 +207,11 @@ struct TemplateTokens {
 
 // MARK: - Swift Tokenization
 
-/// Returns the index of the first unmatched `}` in Swift code starting at `start`,
-/// or `sourceText.endIndex` if none exists, using SwiftSyntax to ignore braces in strings and comments.
-func tokenizeSwiftToUnmatchedCloseCurly(
-    sourceText: String,
-    start: String.Index
-) -> String.Index {
-    // Keep as Substring to preserve index relationship with sourceText
-    let substringSlice = sourceText[start...]
-    
+/// Returns the index of the first unmatched `}` in Swift code,
+/// or `code.endIndex` if none exists, using SwiftSyntax to ignore braces in strings and comments.
+func tokenizeSwiftToUnmatchedCloseCurly(_ code: Substring) -> String.Index {
     // Parse the Swift code (SwiftSyntax requires a String)
-    let source = Parser.parse(source: String(substringSlice))
+    let source = Parser.parse(source: String(code))
     
     // Walk the syntax tree looking for braces
     class BraceVisitor: SyntaxVisitor {
@@ -256,12 +244,12 @@ func tokenizeSwiftToUnmatchedCloseCurly(
     
     if let utf8Offset = visitor.closeBraceOffset {
         // Convert UTF-8 offset to String.Index efficiently using the Substring's utf8 view
-        // The Substring shares indices with the original String, so this index is already valid!
-        let utf8Index = substringSlice.utf8.index(substringSlice.utf8.startIndex, offsetBy: utf8Offset)
-        if let stringIndex = String.Index(utf8Index, within: substringSlice) {
-            return stringIndex  // Already a valid index into sourceText!
+        // The Substring shares indices with its parent, so this index is already valid there!
+        let utf8Index = code.utf8.index(code.utf8.startIndex, offsetBy: utf8Offset)
+        if let stringIndex = String.Index(utf8Index, within: code) {
+            return stringIndex
         }
     }
     
-    return sourceText.endIndex
+    return code.endIndex
 }
