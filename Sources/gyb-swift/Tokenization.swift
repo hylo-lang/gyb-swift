@@ -109,9 +109,9 @@ struct TemplateTokens {
         
         if closeIndex < codePart.endIndex {
             // Include ${ + code + }
-            let consumeCount = remainingText.distance(from: remainingText.startIndex, to: closeIndex) + 1
-            let tokenText = remainingText.prefix(consumeCount)
-            remainingText = remainingText.dropFirst(consumeCount)
+            let endIndex = remainingText.index(after: closeIndex)
+            let tokenText = remainingText[..<endIndex]
+            remainingText = remainingText[endIndex...]
             return TemplateToken(kind: .substitutionOpen, text: tokenText)
         }
         
@@ -133,16 +133,15 @@ struct TemplateTokens {
             let afterClose = codePart.index(after: closeIndex)
             if afterClose < codePart.endIndex && codePart[afterClose] == "%" {
                 // Include %{ + code + }%
-                var consumeCount = remainingText.distance(from: remainingText.startIndex, to: codePart.index(after: afterClose))
+                var endIndex = codePart.index(after: afterClose)
                 
                 // Skip trailing newline if present
-                let afterToken = remainingText.dropFirst(consumeCount)
-                if afterToken.first?.isNewline == true {
-                    consumeCount += 1
+                if endIndex < remainingText.endIndex && remainingText[endIndex].isNewline {
+                    endIndex = remainingText.index(after: endIndex)
                 }
                 
-                let tokenText = remainingText.prefix(consumeCount)
-                remainingText = remainingText.dropFirst(consumeCount)
+                let tokenText = remainingText[..<endIndex]
+                remainingText = remainingText[endIndex...]
                 return TemplateToken(kind: .gybBlockOpen, text: tokenText)
             }
         }
