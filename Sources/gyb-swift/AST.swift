@@ -102,6 +102,7 @@ struct ParseContext {
         var tokenIterator = TemplateTokens(text: templateText)
         
         while let token = tokenIterator.next() {
+            advance(to: token.text.startIndex)
             let line = currentLine
             
             switch token.kind {

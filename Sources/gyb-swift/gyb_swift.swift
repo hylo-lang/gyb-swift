@@ -87,6 +87,9 @@ struct GYBSwift: ParsableCommand {
     @Flag(help: "Dump the parsed template AST to stdout")
     var dump: Bool = false
     
+    @Flag(help: "Dump the generated Swift code to stdout (without executing)")
+    var dumpCode: Bool = false
+    
     /// Reads the template, parses it, executes it with bindings, and writes output.
     mutating func run() throws {
         
@@ -123,6 +126,13 @@ struct GYBSwift: ParsableCommand {
         // Dump AST if requested
         if dump {
             print(ast)
+            return
+        }
+        
+        // Dump generated Swift code if requested
+        if dumpCode {
+            let code = try generateSwiftCode(ast, bindings: bindings, filename: filename, emitSourceLocation: true)
+            print(code)
             return
         }
         

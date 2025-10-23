@@ -42,14 +42,20 @@ enum GYBError: Error, CustomStringConvertible {
 // MARK: - AST to Swift Code Conversion
 
 /// Converts an array of AST nodes to Swift code, batching literals and substitutions into multiline strings.
-func astNodesToSwiftCode(_ nodes: [ASTNode], indent: String = "") -> String {
+func astNodesToSwiftCode(_ nodes: [ASTNode], indent: String = "", filename: String = "", emitSourceLocation: Bool = true) -> String {
     var result: [String] = []
     var textBatch: [String] = []  // Accumulate literal text with \() interpolations
+    var textBatchLine: Int?  // Line number for pending text batch
     
     func flushTextBatch() {
         guard !textBatch.isEmpty else { return }
         let combined = textBatch.joined()
         if !combined.isEmpty {
+            // Emit source location before the print statement
+            if emitSourceLocation, let line = textBatchLine, !filename.isEmpty {
+                result.append(indent + "#sourceLocation(file: \"\(filename)\", line: \(line))")
+            }
+            
             // Escape """ and \ for multiline string literal
             var content = combined
                 .replacingOccurrences(of: "\\", with: "\\\\")
@@ -67,29 +73,38 @@ func astNodesToSwiftCode(_ nodes: [ASTNode], indent: String = "") -> String {
             result.append(indent + "print(\"\"\"\n\(content)\n\(indent)\"\"\", terminator: \"\")")
         }
         textBatch.removeAll()
+        textBatchLine = nil
     }
     
     for node in nodes {
         switch node {
         case let literal as LiteralNode:
+            // Track line number for first node in batch
+            if textBatchLine == nil {
+                textBatchLine = literal.line
+            }
             // Add to text batch - will be escaped later
             textBatch.append(String(literal.text))
             
         case let subst as SubstitutionNode:
+            // Track line number for first node in batch
+            if textBatchLine == nil {
+                textBatchLine = subst.line
+            }
             // Add as interpolation - use double backslash temporarily, will be fixed in flush
             textBatch.append("\\(\(subst.expression))")
             
         case let code as CodeNode:
-            // Flush any pending text, then emit code
+            // Flush any pending text, then emit code (no source location - may be mid-statement)
             flushTextBatch()
             result.append(indent + String(code.code))
             
         case let block as BlockNode:
             if let code = block.code {
-                // Flush pending text, emit control flow
+                // Flush pending text, emit control flow (no source location - may be mid-statement)
                 flushTextBatch()
                 result.append(indent + String(code))
-                result.append(astNodesToSwiftCode(block.children, indent: indent + "    "))
+                result.append(astNodesToSwiftCode(block.children, indent: indent + "    ", filename: filename, emitSourceLocation: emitSourceLocation))
                 
                 // Add closing brace if code has unmatched {
                 let openBraces = code.filter { $0 == "{" }.count
@@ -99,7 +114,7 @@ func astNodesToSwiftCode(_ nodes: [ASTNode], indent: String = "") -> String {
                 }
             } else {
                 // Simple sequence - process children inline
-                result.append(astNodesToSwiftCode(block.children, indent: indent))
+                result.append(astNodesToSwiftCode(block.children, indent: indent, filename: filename, emitSourceLocation: emitSourceLocation))
             }
             
         default:
@@ -112,15 +127,42 @@ func astNodesToSwiftCode(_ nodes: [ASTNode], indent: String = "") -> String {
 }
 
 /// Converts an AST node to executable Swift code.
-func astNodeToSwiftCode(_ node: ASTNode, indent: String = "") -> String {
+func astNodeToSwiftCode(_ node: ASTNode, indent: String = "", filename: String = "", emitSourceLocation: Bool = true) -> String {
     if let block = node as? BlockNode {
-        return astNodesToSwiftCode(block.children, indent: indent)
+        return astNodesToSwiftCode(block.children, indent: indent, filename: filename, emitSourceLocation: emitSourceLocation)
     } else {
-        return astNodesToSwiftCode([node], indent: indent)
+        return astNodesToSwiftCode([node], indent: indent, filename: filename, emitSourceLocation: emitSourceLocation)
     }
 }
 
 // MARK: - Template Execution
+
+/// Returns the generated Swift source code for `ast` with `bindings` (without executing).
+func generateSwiftCode(
+    _ ast: BlockNode,
+    bindings: [String: Any] = [:],
+    filename: String = "",
+    emitSourceLocation: Bool = true
+) throws -> String {
+    // Generate complete Swift program
+    let bindingsCode = bindings
+        .filter { $0.key != "__children__" && $0.key != "__context__" }  // Filter internal bindings
+        .map { "let \($0.key) = \(formatValue($0.value))" }
+        .joined(separator: "\n")
+    
+    let swiftCode = astNodeToSwiftCode(ast, filename: filename, emitSourceLocation: emitSourceLocation)
+    
+    return """
+    import Foundation
+    
+    // Bindings
+    \(bindingsCode)
+    
+    // Generated code
+    \(swiftCode)
+    
+    """
+}
 
 /// Returns the generated text from executing `ast` with `bindings`.
 func executeTemplate(
@@ -130,14 +172,15 @@ func executeTemplate(
     bindings: [String: Any] = [:]
 ) throws -> String {
     // Use whole-program compilation (supports control flow)
-    return try executeTemplateAsWholeProgram(ast, bindings: bindings)
+    return try executeTemplateAsWholeProgram(ast, bindings: bindings, filename: filename)
 }
 
 /// Executes template by converting entire AST to one Swift program.
 // This approach supports control flow (% for, % if) which node-by-node can't handle.
 private func executeTemplateAsWholeProgram(
     _ ast: BlockNode,
-    bindings: [String: Any]
+    bindings: [String: Any],
+    filename: String = ""
 ) throws -> String {
     // Generate complete Swift program
     let bindingsCode = bindings
@@ -145,7 +188,7 @@ private func executeTemplateAsWholeProgram(
         .map { "let \($0.key) = \(formatValue($0.value))" }
         .joined(separator: "\n")
     
-    let swiftCode = astNodeToSwiftCode(ast)
+    let swiftCode = astNodeToSwiftCode(ast, filename: filename, emitSourceLocation: !filename.isEmpty)
     
     let source = """
     import Foundation

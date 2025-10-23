@@ -19,6 +19,7 @@ struct TemplateToken {
     
     let kind: Kind
     let text: Substring
+    // Note: text.startIndex gives position in original template
 }
 
 // MARK: - Template Tokenization
