@@ -623,3 +623,4 @@ func integration_templateStructurePreservation() throws {
     #expect(result.contains("Body content"))
     #expect(result.contains("Footer"))
 }
+

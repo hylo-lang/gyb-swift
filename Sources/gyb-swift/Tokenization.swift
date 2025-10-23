@@ -240,8 +240,9 @@ func tokenizeSwiftToUnmatchedCloseCurly(
             } else if token.tokenKind == .rightBrace {
                 nesting -= 1
                 if nesting < 0 {
-                    // Found unmatched closing brace - record offset in substring
-                    closeBraceOffset = token.position.utf8Offset
+                    // Found unmatched closing brace
+                    // Use positionAfterSkippingLeadingTrivia which gives the actual token position
+                    closeBraceOffset = token.positionAfterSkippingLeadingTrivia.utf8Offset
                     return .skipChildren
                 }
             }
@@ -254,12 +255,13 @@ func tokenizeSwiftToUnmatchedCloseCurly(
     
     if let utf8Offset = visitor.closeBraceOffset {
         // Convert UTF8 offset to character offset in substring
-        // Count characters up to the UTF8 offset
+        // Count characters until we reach the character at the UTF8 offset
         var charCount = 0
         var currentUTF8Offset = 0
         
         for char in substring {
-            if currentUTF8Offset >= utf8Offset {
+            if currentUTF8Offset == utf8Offset {
+                // Found the character at the target offset
                 break
             }
             currentUTF8Offset += char.utf8.count

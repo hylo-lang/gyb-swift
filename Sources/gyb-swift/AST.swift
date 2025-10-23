@@ -67,6 +67,15 @@ struct BlockNode: ASTNode {
     }
 }
 
+// MARK: - Helper Functions
+
+/// Extracts code content from a gybBlockOpen token (%{...}%).
+/// Removes the %{ prefix, }% suffix, and optional trailing newline.
+private func extractCodeFromBlockToken(_ token: Substring) -> Substring {
+    let suffixLength = token.last?.isNewline == true ? 3 : 2  // }%\n or }%
+    return token.dropFirst(2).dropLast(suffixLength)
+}
+
 // MARK: - Parse Context
 
 /// Maintains parsing state while converting templates to AST.
@@ -175,7 +184,7 @@ struct ParseContext {
                                 blockChildren.append(CodeNode(code: childCode, line: childLine))
                             }
                         case .gybBlockOpen:
-                            blockChildren.append(CodeNode(code: nextToken.text.dropFirst(2).dropLast(2), line: childLine))
+                            blockChildren.append(CodeNode(code: extractCodeFromBlockToken(nextToken.text), line: childLine))
                         case .symbol:
                             blockChildren.append(LiteralNode(text: nextToken.text.prefix(1), line: childLine))
                         default:
@@ -197,7 +206,7 @@ struct ParseContext {
                 
             case .gybBlockOpen:
                 // Extract code between %{ and }%
-                nodes.append(CodeNode(code: token.text.dropFirst(2).dropLast(2), line: line))
+                nodes.append(CodeNode(code: extractCodeFromBlockToken(token.text), line: line))
                 
             case .gybBlockClose:
                 // }% - should not appear in isolation

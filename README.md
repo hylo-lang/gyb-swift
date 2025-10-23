@@ -19,6 +19,7 @@ A GYB template consists of:
 
 ## Example
 
+**Template (`example.gyb`):**
 ```swift
 - Hello -
 %{
@@ -26,11 +27,27 @@ let x = 42
 func succ(_ a: Int) -> Int { a + 1 }
 }%
 I can assure you that ${x} < ${succ(x)}
+% let y = 10
 % if y > 7 {
 %   for i in 0..<3 {
 y is greater than seven!
 %   }
 % }
+- The End. -
+```
+
+**Command:**
+```bash
+gyb-swift example.gyb
+```
+
+**Output:**
+```
+- Hello -
+I can assure you that 42 < 43
+y is greater than seven!
+y is greater than seven!
+y is greater than seven!
 - The End. -
 ```
 
@@ -41,16 +58,53 @@ y is greater than seven!
 gyb-swift input.gyb -o output.swift
 
 # With variable bindings
-gyb-swift -Dx=42 -Dname=value input.gyb -o output.swift
+gyb-swift input.gyb -D x=42 -D name=value -o output.swift
 
 # Read from stdin, write to stdout
-echo "Hello ${x}!" | gyb-swift -Dx=World -
+echo "Hello ${x}!" | gyb-swift - -D x=World
 
-# Run self-tests
-gyb-swift --test
+# Dump the parsed AST
+gyb-swift --dump input.gyb
+
+# Dump generated Swift code without executing
+gyb-swift --dump-code input.gyb
+
+# Custom source location directives
+gyb-swift --line-directive '#sourceLocation(file: "%(file)s", line: %(line)d)' input.gyb
 ```
 
-## Implementation Notes
+## Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/gyb-swift.git
+cd gyb-swift
+
+# Build the project
+swift build
+
+# Run directly
+swift run gyb-swift <template.gyb>
+
+# Or install to use system-wide
+swift build -c release
+cp .build/release/gyb-swift /usr/local/bin/
+```
+
+## Features
+
+- ✅ Full Swift language support in templates
+- ✅ Control flow (`for`, `if`, `while`, `switch`)
+- ✅ SwiftSyntax integration for accurate code parsing
+- ✅ `#sourceLocation` directives for error mapping
+- ✅ Multiline string literals with interpolations in generated code
+- ✅ `--dump-code` to inspect generated Swift
+- ✅ Efficient `Substring` usage throughout
+- ✅ Comprehensive test suite (44 tests)
+
+---
+
+## Development
 
 ### Translation Approach
 
@@ -61,37 +115,36 @@ This implementation translates gyb.py's functionality while adapting for Swift's
 3. **Type Safety**: Leverages Swift's type system where Python used dynamic typing
 4. **Error Handling**: Uses Swift's error handling instead of Python exceptions
 
-### Key Differences from Python gyb.py
+### Execution Model
 
-#### Dynamic Execution Model
+- **Python gyb.py**: Uses `eval()` and `exec()` for runtime code evaluation
+- **gyb-swift**: Converts entire template to a single Swift program, compiles with `swiftc`, and executes
 
-The most significant difference is in code execution:
+**Advantages:**
+- Full Swift language support including control flow (`for`, `if`, `while`, etc.)
+- Variables persist across template sections
+- Type-safe Swift code execution
 
-- **Python gyb.py**: Uses `eval()` and `exec()` for runtime code evaluation with a shared execution context
-- **gyb-swift**: Compiles and executes Swift code dynamically using `swiftc`
+**Trade-offs:**
+- Compilation overhead (slower than Python's eval)
+- Requires `swiftc` to be available
 
-This means that in the current implementation:
-- Each code block is compiled separately
-- Variable persistence across template sections has limitations
-- Performance is slower due to compilation overhead
+### Source Location Mapping
 
-#### Limitations
+gyb-swift emits `#sourceLocation` directives in generated code to map compiler errors back to template files:
+- Template text and `${...}` expressions map to original template line numbers
+- Syntax errors in templates show the correct file and line
+- Makes debugging templates significantly easier
 
-1. **Variable Scope**: Variables defined in `%{...}%` blocks may not persist to `${...}` substitutions due to separate compilation units
-2. **Performance**: Dynamic compilation is slower than Python's eval()
-3. **Control Flow**: Complex control structures spanning multiple template sections may not work as expected
-4. **State**: No shared mutable state across executions like Python's global scope
+### String Handling Optimizations
 
-### Production Considerations
+gyb-swift uses `Substring` extensively to minimize memory allocations:
+- Template tokens store `Substring` references (share original string storage)
+- AST nodes use `Substring` for literals, code, and expressions
+- Only convert to `String` at execution boundaries
+- Efficient for large templates with minimal copying
 
-For a production-ready gyb-swift, consider:
-
-1. **Swift REPL Integration**: Integrate with Swift's REPL for true interactive execution
-2. **Compilation Strategy**: Collect all template code and compile as single unit
-3. **Caching**: Cache compiled code for better performance
-4. **Sandbox**: Ensure proper sandboxing of executed code
-
-## Architecture
+### Architecture
 
 The implementation consists of:
 
@@ -101,7 +154,7 @@ The implementation consists of:
 - **ExecutionContext.swift**: Runtime execution environment
 - **gyb_swift.swift**: Command-line interface
 
-## Testing
+### Testing
 
 The test suite translates doctests from the original gyb.py:
 
@@ -113,13 +166,22 @@ Tests cover:
 - String utilities
 - Tokenization
 - Template parsing
-- Execution (with limitations noted above)
+- Code generation and execution
 
-## Building
+### Building from Source
 
 ```bash
+# Debug build
 swift build
+
+# Release build
+swift build -c release
+
+# Run tests
+swift test
 ```
+
+---
 
 ## License
 
@@ -131,12 +193,10 @@ This translation maintains compatibility with the Swift project's license. See t
 - Better Code documentation methodology by Sean Parent and Dave Abrahams
 - SwiftSyntax library by Apple
 
-## Future Improvements
+## Roadmap
 
-- [ ] Integrate Swift REPL for proper eval() equivalent
-- [ ] Single compilation unit execution model
-- [ ] Performance optimizations (compilation caching)
-- [ ] Extended control flow support
-- [ ] Debug mode with verbose output
+- [ ] Compilation result caching for better performance
 - [ ] Template include/import system
+- [ ] Additional output formatters
+- [ ] Watch mode for template development
 
