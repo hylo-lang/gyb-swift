@@ -5,9 +5,9 @@ import SwiftParser
 // MARK: - Token Types
 
 /// Represents a token extracted from a template.
-struct TemplateToken {
+struct TemplateToken: Equatable {
     /// The type of token.
-    enum Kind {
+    enum Kind: Equatable {
         case literal
         case substitutionOpen  // ${
         case gybLines          // %-lines (including % }, % } else {, etc.)
@@ -19,6 +19,11 @@ struct TemplateToken {
     let kind: Kind
     let text: Substring
     // Note: text.startIndex gives position in original template
+    
+    // Custom equality that compares text content, not indices
+    static func == (lhs: TemplateToken, rhs: TemplateToken) -> Bool {
+        return lhs.kind == rhs.kind && String(lhs.text) == String(rhs.text)
+    }
 }
 
 // MARK: - Template Tokenization

@@ -1,6 +1,13 @@
 import Testing
 @testable import gyb_swift
 
+// MARK: - Test Helpers
+
+/// Helper to create a token with String text for testing
+func token(_ kind: TemplateToken.Kind, _ text: String) -> TemplateToken {
+    TemplateToken(kind: kind, text: text[...])
+}
+
 // MARK: - String Utilities Tests
 
 @Test("getLineStarts with multi-line text")
@@ -45,7 +52,7 @@ func tokenize_literal() {
     let token = tokenizer.next()
     
     #expect(token?.kind == .literal)
-    #expect(token?.text.contains("Hello") == true)
+    #expect(token?.text == "Hello, World!")
 }
 
 @Test("tokenize $$ escape sequence")
@@ -56,7 +63,11 @@ func tokenize_escapedDollar() {
         tokens.append(token)
     }
     
-    #expect(tokens.contains { $0.kind == .symbol && $0.text == "$$" })
+    let expected = [
+        token(.symbol, "$$"),
+        token(.literal, "100")
+    ]
+    #expect(tokens == expected)
 }
 
 @Test("tokenize %% escape sequence")
@@ -67,7 +78,11 @@ func tokenize_escapedPercent() {
         tokens.append(token)
     }
     
-    #expect(tokens.contains { $0.kind == .symbol && $0.text == "%%" })
+    let expected = [
+        token(.literal, "100"),
+        token(.symbol, "%%")
+    ]
+    #expect(tokens == expected)
 }
 
 @Test("tokenize ${} substitution")
@@ -78,7 +93,10 @@ func tokenize_substitution() {
         tokens.append(token)
     }
     
-    #expect(tokens.contains { $0.kind == .substitutionOpen })
+    let expected = [
+        token(.substitutionOpen, "${x}")
+    ]
+    #expect(tokens == expected)
 }
 
 @Test("tokenize %{} code block")
@@ -89,7 +107,10 @@ func tokenize_codeBlock() {
         tokens.append(token)
     }
     
-    #expect(tokens.contains { $0.kind == .gybBlockOpen })
+    let expected = [
+        token(.gybBlockOpen, "%{ let x = 42 }%")
+    ]
+    #expect(tokens == expected)
 }
 
 @Test("}% inside strings doesn't terminate code block")
@@ -105,7 +126,7 @@ func codeBlock_delimiterInString() {
     
     #expect(tokens.count == 2)
     #expect(tokens[0].kind == .gybBlockOpen)
-    #expect(tokens[0].text.contains(#""Error: }% not allowed""#))
+    #expect(tokens[0].text == #"%{ let msg = "Error: }% not allowed" }%"#)
     #expect(tokens[1].kind == .literal)
     #expect(tokens[1].text == "Done")
 }
@@ -122,7 +143,7 @@ func substitution_braceInString() {
     
     #expect(tokens.count == 2)
     #expect(tokens[0].kind == .substitutionOpen)
-    #expect(tokens[0].text.contains(#""key}value""#))
+    #expect(tokens[0].text == #"${dict["key}value"]}"#)
     #expect(tokens[1].kind == .literal)
     #expect(tokens[1].text == "Done")
 }
@@ -138,8 +159,7 @@ func nestedStrings_withDelimiters() {
     
     #expect(tokens.count == 1)
     #expect(tokens[0].kind == .gybBlockOpen)
-    #expect(tokens[0].text.contains("first }% here"))
-    #expect(tokens[0].text.contains("second }% there"))
+    #expect(tokens[0].text == #"%{ let a = "first }% here"; let b = "second }% there" }%"#)
 }
 
 @Test("SwiftSyntax parser handles invalid/incomplete Swift gracefully")
@@ -157,10 +177,9 @@ func parser_resilientWithInvalidSwift() {
     
     #expect(tokens.count == 2)
     #expect(tokens[0].kind == .substitutionOpen)
-    #expect(tokens[0].text.contains("count"))
-    #expect(!tokens[0].text.contains("Done"))
+    #expect(tokens[0].text == "${count}")
     #expect(tokens[1].kind == .literal)
-    #expect(tokens[1].text.contains("Done"))
+    #expect(tokens[1].text == "Done")
 }
 
 @Test("%{...}% code blocks with nested braces from closures")
@@ -174,9 +193,7 @@ func codeBlock_withClosure() {
     
     #expect(tokens.count == 2)
     #expect(tokens[0].kind == .gybBlockOpen)
-    #expect(tokens[0].text.contains("forEach"))
-    #expect(tokens[0].text.contains("print($0)"))
-    #expect(!tokens[0].text.contains("Done"))
+    #expect(tokens[0].text == #"%{ items.forEach { print($0) } }%"#)
     #expect(tokens[1].text == "Done")
 }
 
@@ -191,8 +208,8 @@ func codeBlock_withDictionary() {
     
     #expect(tokens.count == 2)
     #expect(tokens[0].kind == .gybBlockOpen)
-    #expect(tokens[0].text.contains(#"["key": "value"]"#))
-    #expect(!tokens[0].text.contains("After"))
+    #expect(tokens[0].text == #"%{ let dict = ["key": "value"]; let x = dict["key"] }%"#)
+    #expect(tokens[1].text == "After")
 }
 
 @Test("%{...}% code blocks with nested control structures")
@@ -211,11 +228,17 @@ func codeBlock_nestedControlStructures() {
         tokens.append(token)
     }
     
-    #expect(tokens.count >= 1)
+    #expect(tokens.count == 2)
     #expect(tokens[0].kind == .gybBlockOpen)
-    #expect(tokens[0].text.contains("if true"))
-    #expect(tokens[0].text.contains("for (k, v)"))
-    #expect(!tokens[0].text.contains("Done"))
+    #expect(tokens[0].text == #"""
+    %{ if true {
+        let dict = ["a": 1]
+        for (k, v) in dict {
+            print("\(k): \(v)")
+        }
+    } }%
+    """#)
+    #expect(tokens[1].text == "Done")
 }
 
 @Test("%{...}% code blocks with generics containing angle brackets")
@@ -229,9 +252,8 @@ func codeBlock_withGenerics() {
     
     #expect(tokens.count == 2)
     #expect(tokens[0].kind == .gybBlockOpen)
-    #expect(tokens[0].text.contains("Array<"))
-    #expect(tokens[0].text.contains("[String: Int]"))
-    #expect(!tokens[0].text.contains("Text"))
+    #expect(tokens[0].text == #"%{ let arr: Array<[String: Int]> = [] }%"#)
+    #expect(tokens[1].text == "Text")
 }
 
 @Test("%{...}% code blocks with trailing closure syntax")
@@ -245,8 +267,8 @@ func codeBlock_trailingClosure() {
     
     #expect(tokens.count == 2)
     #expect(tokens[0].kind == .gybBlockOpen)
-    #expect(tokens[0].text.contains("map { $0 * 2 }"))
-    #expect(!tokens[0].text.contains("End"))
+    #expect(tokens[0].text == #"%{ let result = numbers.map { $0 * 2 } }%"#)
+    #expect(tokens[1].text == "End")
 }
 
 @Test("multiline string literals with delimiters")
@@ -285,11 +307,14 @@ func tokenize_pythonDoctest1() {
         tokens.append(token)
     }
     
-    // Swift tokenizes each %-line separately
-    #expect(tokens.contains { $0.kind == .gybLines && $0.text.contains("% for") })
-    #expect(tokens.contains { $0.kind == .gybLines && $0.text.contains("print") })
-    #expect(tokens.contains { $0.kind == .gybLines && $0.text.contains("% }") })
-    #expect(tokens.contains { $0.kind == .literal && $0.text == "juicebox" })
+    // Swift tokenizes each %-line separately (newlines after %-lines are consumed by tokenizer)
+    let expected = [
+        token(.gybLines, "% for x in 0..<10 {"),
+        token(.gybLines, "%  print(x)"),
+        token(.gybLines, "% }"),
+        token(.literal, "juicebox")
+    ]
+    #expect(tokens == expected)
 }
 
 @Test("tokenize template with mixed % and ${}")
@@ -312,14 +337,19 @@ THIS SHOULD NOT APPEAR IN THE OUTPUT
         tokens.append(token)
     }
     
-    // Verify all expected token types are present
-    #expect(tokens.contains { $0.kind == .literal && $0.text.contains("Nothing") })
-    #expect(tokens.contains { $0.kind == .gybLines && $0.text.contains("% if") })
-    #expect(tokens.contains { $0.kind == .gybLines && $0.text.contains("%    for i") })
-    #expect(tokens.contains { $0.kind == .substitutionOpen })
-    #expect(tokens.contains { $0.kind == .gybLines && $0.text.contains("%    }") })
-    #expect(tokens.contains { $0.kind == .gybLines && $0.text.contains("% } else") })
-    #expect(tokens.contains { $0.kind == .literal && $0.text.contains("THIS SHOULD NOT APPEAR") })
+    // Verify exact token sequence (newlines after %-lines are consumed by tokenizer)
+    let expected = [
+        token(.literal, "Nothing\n"),
+        token(.gybLines, "% if x != 0 {"),
+        token(.gybLines, "%    for i in 0..<3 {"),
+        token(.substitutionOpen, "${i}"),
+        token(.literal, "\n"),
+        token(.gybLines, "%    }"),
+        token(.gybLines, "% } else {"),
+        token(.literal, "THIS SHOULD NOT APPEAR IN THE OUTPUT\n"),
+        token(.gybLines, "% }")
+    ]
+    #expect(tokens == expected)
 }
 
 @Test("tokenize complex template with all constructs")
@@ -341,14 +371,21 @@ and %-lines:
         tokens.append(token)
     }
     
-    // Verify key tokens are present
-    #expect(tokens.contains { $0.kind == .literal })
-    #expect(tokens.contains { $0.kind == .substitutionOpen })
-    #expect(tokens.contains { $0.kind == .gybBlockOpen })
-    #expect(tokens.contains { $0.kind == .gybLines && $0.text.contains("% let") })
-    #expect(tokens.contains { $0.kind == .gybLines && $0.text.contains("% for") })
-    #expect(tokens.contains { $0.kind == .symbol && $0.text == "%%" })
-    #expect(tokens.contains { $0.kind == .gybLines && $0.text.contains("% }") })
+    // Verify exact token sequence (%-lines consume trailing newline, "and %-lines:" is parsed as %-line)
+    let expected = [
+        token(.literal, "This is literal stuff "),
+        token(.substitutionOpen, "${x}"),
+        token(.literal, "\n"),
+        token(.gybBlockOpen, "%{ let code = 1 }%\n"),  // Includes newline
+        token(.literal, "and "),
+        token(.gybLines, "%-lines:"),  // "%-lines:" starts with % so treated as %-line
+        token(.gybLines, "% let x = 1"),
+        token(.gybLines, "% for i in 0..<1 {"),
+        token(.symbol, "%%"),
+        token(.literal, " literal percent\n"),
+        token(.gybLines, "% }")
+    ]
+    #expect(tokens == expected)
 }
 
 // MARK: - Parse Tests
@@ -405,7 +442,7 @@ func execute_templateWithEscapedSymbols() throws {
     let ast = try parseTemplate(filename: "test", text: text)
     let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
     
-    #expect(result.contains("$50"))
+    #expect(result == "Price: $50")
 }
 
 @Test("substitution with bound variable")
@@ -413,7 +450,7 @@ func substitution_withSimpleBinding() throws {
     let text = "x = ${x}"
     let ast = try parseTemplate(filename: "test", text: text)
     let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: ["x": 42])
-    #expect(result.contains("42"))
+    #expect(result == "x = 42")
 }
 
 @Test("empty template")
@@ -440,9 +477,7 @@ func execute_mixedLiteralsAndSymbols() throws {
     let ast = try parseTemplate(filename: "test", text: text)
     let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
     
-    #expect(result.contains("Regular"))
-    #expect(result.contains("$text"))
-    #expect(result.contains("%symbols"))
+    #expect(result == "Regular $text with %symbols")
 }
 
 @Test("malformed substitutions handled gracefully")
@@ -497,22 +532,31 @@ func execute_lineDirectives() throws {
         emitSourceLocation: true
     )
     
-    // Verify line directives are emitted in generated code
-    #expect(code.contains("//# line 1 \"test.gyb\""))
+    // Verify exact generated code with line directives
+    let expectedCode = """
+import Foundation
+
+// Bindings
+
+
+// Generated code
+//# line 1 "test.gyb"
+print(\"\"\"
+Line 1
+Line 2
+\"\"\", terminator: "")
+
+"""
+    #expect(code == expectedCode)
     
-    // Verify the actual content is present
-    #expect(code.contains("Line 1"))
-    #expect(code.contains("Line 2"))
-    
-    // Test execution also works
+    // Test execution produces exact expected output
     let result = try executeTemplate(
         ast,
         filename: "test.gyb",
         lineDirective: "//# line \\(line) \"\\(file)\"",
         bindings: [:]
     )
-    #expect(result.contains("Line 1"))
-    #expect(result.contains("Line 2"))
+    #expect(result == "Line 1\nLine 2")
 }
 
 // MARK: - Documentation Tests
@@ -562,8 +606,13 @@ func integration_realisticTemplate() throws {
         bindings: ["count": 42]
     )
     
-    #expect(result.contains("struct Example"))
-    #expect(result.contains("42"))
+    let expected = """
+    // Generated file
+    struct Example {
+        let count = 42
+    }
+    """
+    #expect(result == expected)
 }
 
 @Test("execute Swift template with control flow using % }")
@@ -583,10 +632,13 @@ ${i}
         bindings: [:]
     )
     
-    // Should execute the loop and produce 0, 1, 2
-    #expect(result.contains("0"))
-    #expect(result.contains("1"))
-    #expect(result.contains("2"))
+    let expected = """
+0
+1
+2
+
+"""
+    #expect(result == expected)
 }
 
 @Test("execute template with if control flow")
@@ -601,7 +653,7 @@ large
     let ast = try parseTemplate(filename: "test", text: text)
     let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
     
-    #expect(result.contains("large"))
+    #expect(result == "large\n")
 }
 
 @Test("execute template with nested control flow")
@@ -617,10 +669,14 @@ func execute_nestedControlFlow() throws {
     let ast = try parseTemplate(filename: "test", text: text)
     let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
     
-    #expect(result.contains("(1,1)"))
-    #expect(result.contains("(1,2)"))
-    #expect(result.contains("(2,1)"))
-    #expect(result.contains("(2,2)"))
+    let expected = """
+(1,1)
+(1,2)
+(2,1)
+(2,2)
+
+"""
+    #expect(result == expected)
 }
 
 @Test("template structure is preserved")
@@ -636,9 +692,7 @@ func integration_templateStructurePreservation() throws {
     let ast = try parseTemplate(filename: "test", text: text)
     let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
     
-    #expect(result.contains("Header"))
-    #expect(result.contains("Body content"))
-    #expect(result.contains("Footer"))
+    #expect(result == text)
 }
 
 // MARK: - Python Doctest Equivalence Tests
@@ -666,9 +720,37 @@ THIS SHOULD NOT APPEAR IN THE OUTPUT
         emitSourceLocation: true
     )
     
-    // With our batching approach for cleaner output, loop iterations on the same
-    // source line get one line directive for the batch, not one per iteration
-    #expect(code.contains("//# line 4 \"test.gyb\""), "Expected line directive for loop content")
+    // Verify exact generated code structure with line directives
+    let expectedCode = """
+import Foundation
+
+// Bindings
+let x = 1
+
+// Generated code
+//# line 1 "test.gyb"
+print(\"\"\"
+Nothing
+
+\"\"\", terminator: "")
+if x != 0 {
+for i in 0..<3 {
+//# line 4 "test.gyb"
+print(\"\"\"
+\\(i)
+
+\"\"\", terminator: "")
+}
+} else {
+//# line 7 "test.gyb"
+print(\"\"\"
+THIS SHOULD NOT APPEAR IN THE OUTPUT
+
+\"\"\", terminator: "")
+}
+
+"""
+    #expect(code == expectedCode)
     
     // Verify execution produces correct output
     let result = try executeTemplate(
@@ -677,11 +759,14 @@ THIS SHOULD NOT APPEAR IN THE OUTPUT
         lineDirective: "//# line \\(line) \"\\(file)\"",
         bindings: ["x": 1]
     )
-    #expect(result.contains("Nothing"))
-    #expect(result.contains("0"))
-    #expect(result.contains("1"))
-    #expect(result.contains("2"))
-    #expect(!result.contains("SHOULD NOT APPEAR"))
+    let expected = """
+Nothing
+0
+1
+2
+
+"""
+    #expect(result == expected)
 }
 
 @Test("line directive after code-only lines")
@@ -705,9 +790,30 @@ ${a}
         emitSourceLocation: true
     )
     
-    // Should have line directive for line 1 (Nothing) and line 6 (substitution)
-    #expect(code.contains("//# line 1 \"test.gyb\""))
-    #expect(code.contains("//# line 6 \"test.gyb\""))
+    // Verify exact generated code with line directives at correct positions
+    let expectedCode = """
+import Foundation
+
+// Bindings
+
+
+// Generated code
+//# line 1 "test.gyb"
+print(\"\"\"
+Nothing
+
+\"\"\", terminator: "")
+var a: [Int] = []
+for x in 0..<3 {
+a.append(x)
+}
+//# line 6 "test.gyb"
+print(\"\"\"
+\\(a)
+\"\"\", terminator: "")
+
+"""
+    #expect(code == expectedCode)
     
     // Verify execution
     let result = try executeTemplate(
@@ -716,8 +822,8 @@ ${a}
         lineDirective: "//# line \\(line) \"\\(file)\"",
         bindings: [:]
     )
-    #expect(result.contains("Nothing"))
-    #expect(result.contains("[0, 1, 2]"))
+    // Template has no trailing newline after the substitution
+    #expect(result == "Nothing\n[0, 1, 2]")
 }
 
 @Test("multiline substitution expression")
@@ -737,11 +843,12 @@ ${120 +
         bindings: [:]
     )
     
-    #expect(result.contains("123"))
+    // Template has no trailing newline after the substitution
+    #expect(result == "123")
 }
 
 @Test("substitution with embedded newlines in result")
-// Python doctest: expand() with ${"w\nx\nX\ny"}
+// Swift literal string with escape sequences
 func substitution_embeddedNewlines() throws {
     let text = """
 abc
@@ -757,12 +864,9 @@ z
         bindings: [:]
     )
     
-    #expect(result.contains("abc"))
-    #expect(result.contains("w"))
-    #expect(result.contains("x"))
-    #expect(result.contains("X"))
-    #expect(result.contains("y"))
-    #expect(result.contains("z"))
+    // Note: Swift prints the escaped string literally as "w\nx\nX\ny"
+    // Template has no trailing newline after 'z'
+    #expect(result == "abc\nw\\nx\\nX\\ny\nz")
 }
 
 @Test("comprehensive integration test matching Python expand() doctest")
@@ -791,12 +895,38 @@ z
         emitSourceLocation: true
     )
     
-    // Verify line directives are generated at logical boundaries
-    // Line directives mark the start of each output block
-    #expect(code.contains("//# line 1 \"test.gyb\""))  // First output block (---)
-    #expect(code.contains("//# line 3 \"test.gyb\""))  // Loop body output (a pox on...)
-    #expect(code.contains("//# line 5 \"test.gyb\""))  // Multiline substitution
-    // Additional line directives may be present for other output blocks
+    // Verify exact generated code with line directives at correct positions
+    let expectedCode = """
+import Foundation
+
+// Bindings
+let x = "2"
+
+// Generated code
+//# line 1 "test.gyb"
+print(\"\"\"
+---
+
+\"\"\", terminator: "")
+for i in 0..<Int(x)! {
+//# line 3 "test.gyb"
+print(\"\"\"
+a pox on \\(i) for epoxy
+
+\"\"\", terminator: "")
+}
+//# line 5 "test.gyb"
+print(\"\"\"
+\\(120 +
+
+   3)
+abc
+\\("w\\\\nx\\\\nX\\\\ny")
+z
+\"\"\", terminator: "")
+
+"""
+    #expect(code == expectedCode)
     
     // Verify execution produces correct output
     let result = try executeTemplate(
@@ -806,16 +936,17 @@ z
         bindings: ["x": "2"]
     )
     
-    #expect(result.contains("---"))
-    #expect(result.contains("a pox on 0 for epoxy"))
-    #expect(result.contains("a pox on 1 for epoxy"))
-    #expect(result.contains("123"))
-    #expect(result.contains("abc"))
-    #expect(result.contains("w"))
-    #expect(result.contains("x"))
-    #expect(result.contains("X"))
-    #expect(result.contains("y"))
-    #expect(result.contains("z"))
+    // Note: the ${"w\\nx\\nX\\ny"} expression outputs the escaped string literally
+    let expected = """
+---
+a pox on 0 for epoxy
+a pox on 1 for epoxy
+123
+abc
+w\\nx\\nX\\ny
+z
+"""
+    #expect(result == expected)
 }
 
 @Test("alternative line directive format")
@@ -839,11 +970,29 @@ ${a}
         emitSourceLocation: true
     )
     
-    // Should use the custom format
-    #expect(code.contains("#line 1 \"test.gyb\""))
-    #expect(code.contains("#line 6 \"test.gyb\""))
-    
-    // Verify it doesn't contain the default format
-    #expect(!code.contains("#sourceLocation"))
+    // Verify exact generated code with alternative line directive format
+    let expectedCode = """
+import Foundation
+
+// Bindings
+
+
+// Generated code
+#line 1 "test.gyb"
+print(\"\"\"
+Nothing
+
+\"\"\", terminator: "")
+var a: [Int] = []
+for x in 0..<3 {
+a.append(x)
+}
+#line 6 "test.gyb"
+print(\"\"\"
+\\(a)
+\"\"\", terminator: "")
+
+"""
+    #expect(code == expectedCode)
 }
 
