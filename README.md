@@ -70,7 +70,7 @@ gyb-swift --dump input.gyb
 gyb-swift --dump-code input.gyb
 
 # Custom source location directives
-gyb-swift --line-directive '#sourceLocation(file: "%(file)s", line: %(line)d)' input.gyb
+gyb-swift --line-directive '#sourceLocation(file: "\(file)", line: \(line))' input.gyb
 ```
 
 ## Installation

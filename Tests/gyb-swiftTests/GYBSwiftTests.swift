@@ -485,15 +485,30 @@ func ast_structure() throws {
 func execute_lineDirectives() throws {
     let text = "Line 1\nLine 2"
     let ast = try parseTemplate(filename: "test.gyb", text: text)
+    
+    // Test with custom line directive format
+    let code = try generateSwiftCode(
+        ast,
+        bindings: [:],
+        filename: "test.gyb",
+        lineDirective: "//# line \\(line) \"\\(file)\"",
+        emitSourceLocation: true
+    )
+    
+    // Verify line directives are emitted in generated code
+    #expect(code.contains("//# line 1 \"test.gyb\""))
+    
+    // Verify the actual content is present
+    #expect(code.contains("Line 1"))
+    #expect(code.contains("Line 2"))
+    
+    // Test execution also works
     let result = try executeTemplate(
         ast,
         filename: "test.gyb",
-        lineDirective: "//# line %(line)d \"%(file)s\"",
+        lineDirective: "//# line \\(line) \"\\(file)\"",
         bindings: [:]
     )
-    
-    // For literal-only templates, line directives may not be emitted
-    // That's acceptable behavior - just verify we get the expected text
     #expect(result.contains("Line 1"))
     #expect(result.contains("Line 2"))
 }

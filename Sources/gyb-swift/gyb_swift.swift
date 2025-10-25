@@ -79,10 +79,10 @@ struct GYBSwift: ParsableCommand {
     var defines: [String] = []
     
     @Option(help: """
-        Line directive format string with %(file)s and %(line)d placeholders.
-        Example: '#sourceLocation(file: "%(file)s", line: %(line)d)'
+        Line directive format string with \\(file) and \\(line) placeholders.
+        Example: '#sourceLocation(file: "\\(file)", line: \\(line))'
         """)
-    var lineDirective: String = "//# sourceLocation(file: \"%(file)s\", line: %(line)d)"
+    var lineDirective: String = "#sourceLocation(file: \"\\(file)\", line: \\(line))"
     
     @Flag(help: "Dump the parsed template AST to stdout")
     var dump: Bool = false
@@ -131,7 +131,7 @@ struct GYBSwift: ParsableCommand {
         
         // Dump generated Swift code if requested
         if dumpCode {
-            let code = try generateSwiftCode(ast, bindings: bindings, filename: filename, emitSourceLocation: true)
+            let code = try generateSwiftCode(ast, bindings: bindings, filename: filename, lineDirective: lineDirective, emitSourceLocation: true)
             print(code)
             return
         }

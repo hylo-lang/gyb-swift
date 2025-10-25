@@ -42,7 +42,7 @@ enum GYBError: Error, CustomStringConvertible {
 // MARK: - AST to Swift Code Conversion
 
 /// Converts an array of AST nodes to Swift code, batching literals and substitutions into multiline strings.
-func astNodesToSwiftCode(_ nodes: [ASTNode], indent: String = "", filename: String = "", emitSourceLocation: Bool = true) -> String {
+func astNodesToSwiftCode(_ nodes: [ASTNode], indent: String = "", filename: String = "", lineDirective: String = "#sourceLocation(file: \"\\(file)\", line: \\(line))", emitSourceLocation: Bool = true) -> String {
     var result: [String] = []
     var textBatch: [String] = []  // Accumulate literal text with \() interpolations
     var textBatchLine: Int?  // Line number for pending text batch
@@ -53,7 +53,10 @@ func astNodesToSwiftCode(_ nodes: [ASTNode], indent: String = "", filename: Stri
         if !combined.isEmpty {
             // Emit source location before the print statement
             if emitSourceLocation, let line = textBatchLine, !filename.isEmpty {
-                result.append(indent + "#sourceLocation(file: \"\(filename)\", line: \(line))")
+                let directive = lineDirective
+                    .replacingOccurrences(of: "\\(file)", with: filename)
+                    .replacingOccurrences(of: "\\(line)", with: "\(line)")
+                result.append(indent + directive)
             }
             
             // Escape """ and \ for multiline string literal
@@ -104,7 +107,7 @@ func astNodesToSwiftCode(_ nodes: [ASTNode], indent: String = "", filename: Stri
                 // Flush pending text, emit control flow (no source location - may be mid-statement)
                 flushTextBatch()
                 result.append(indent + String(code))
-                result.append(astNodesToSwiftCode(block.children, indent: indent + "    ", filename: filename, emitSourceLocation: emitSourceLocation))
+                result.append(astNodesToSwiftCode(block.children, indent: indent + "    ", filename: filename, lineDirective: lineDirective, emitSourceLocation: emitSourceLocation))
                 
                 // Add closing brace if code has unmatched {
                 let openBraces = code.filter { $0 == "{" }.count
@@ -114,7 +117,7 @@ func astNodesToSwiftCode(_ nodes: [ASTNode], indent: String = "", filename: Stri
                 }
             } else {
                 // Simple sequence - process children inline
-                result.append(astNodesToSwiftCode(block.children, indent: indent, filename: filename, emitSourceLocation: emitSourceLocation))
+                result.append(astNodesToSwiftCode(block.children, indent: indent, filename: filename, lineDirective: lineDirective, emitSourceLocation: emitSourceLocation))
             }
             
         default:
@@ -127,11 +130,11 @@ func astNodesToSwiftCode(_ nodes: [ASTNode], indent: String = "", filename: Stri
 }
 
 /// Converts an AST node to executable Swift code.
-func astNodeToSwiftCode(_ node: ASTNode, indent: String = "", filename: String = "", emitSourceLocation: Bool = true) -> String {
+func astNodeToSwiftCode(_ node: ASTNode, indent: String = "", filename: String = "", lineDirective: String = "#sourceLocation(file: \"\\(file)\", line: \\(line))", emitSourceLocation: Bool = true) -> String {
     if let block = node as? BlockNode {
-        return astNodesToSwiftCode(block.children, indent: indent, filename: filename, emitSourceLocation: emitSourceLocation)
+        return astNodesToSwiftCode(block.children, indent: indent, filename: filename, lineDirective: lineDirective, emitSourceLocation: emitSourceLocation)
     } else {
-        return astNodesToSwiftCode([node], indent: indent, filename: filename, emitSourceLocation: emitSourceLocation)
+        return astNodesToSwiftCode([node], indent: indent, filename: filename, lineDirective: lineDirective, emitSourceLocation: emitSourceLocation)
     }
 }
 
@@ -142,6 +145,7 @@ func generateSwiftCode(
     _ ast: BlockNode,
     bindings: [String: Any] = [:],
     filename: String = "",
+    lineDirective: String = "#sourceLocation(file: \"\\(file)\", line: \\(line))",
     emitSourceLocation: Bool = true
 ) throws -> String {
     // Generate complete Swift program
@@ -150,7 +154,7 @@ func generateSwiftCode(
         .map { "let \($0.key) = \(formatValue($0.value))" }
         .joined(separator: "\n")
     
-    let swiftCode = astNodeToSwiftCode(ast, filename: filename, emitSourceLocation: emitSourceLocation)
+    let swiftCode = astNodeToSwiftCode(ast, filename: filename, lineDirective: lineDirective, emitSourceLocation: emitSourceLocation)
     
     return """
     import Foundation
@@ -168,11 +172,11 @@ func generateSwiftCode(
 func executeTemplate(
     _ ast: BlockNode,
     filename: String = "stdin",
-    lineDirective: String = "//# sourceLocation(file: \"%(file)s\", line: %(line)d)",
+    lineDirective: String = "#sourceLocation(file: \"\\(file)\", line: \\(line))",
     bindings: [String: Any] = [:]
 ) throws -> String {
     // Use whole-program compilation (supports control flow)
-    return try executeTemplateAsWholeProgram(ast, bindings: bindings, filename: filename)
+    return try executeTemplateAsWholeProgram(ast, bindings: bindings, filename: filename, lineDirective: lineDirective)
 }
 
 /// Executes template by converting entire AST to one Swift program.
@@ -180,7 +184,8 @@ func executeTemplate(
 private func executeTemplateAsWholeProgram(
     _ ast: BlockNode,
     bindings: [String: Any],
-    filename: String = ""
+    filename: String = "",
+    lineDirective: String = "#sourceLocation(file: \"\\(file)\", line: \\(line))"
 ) throws -> String {
     // Generate complete Swift program
     let bindingsCode = bindings
@@ -188,7 +193,7 @@ private func executeTemplateAsWholeProgram(
         .map { "let \($0.key) = \(formatValue($0.value))" }
         .joined(separator: "\n")
     
-    let swiftCode = astNodeToSwiftCode(ast, filename: filename, emitSourceLocation: !filename.isEmpty)
+    let swiftCode = astNodeToSwiftCode(ast, filename: filename, lineDirective: lineDirective, emitSourceLocation: !filename.isEmpty)
     
     let source = """
     import Foundation
