@@ -61,15 +61,13 @@ struct CodeGenerator {
         }
 
         let lines = chunks.map { chunk -> String in
-            let chunkArray = Array(chunk)
-
             // Code nodes are emitted directly
-            if let code = chunkArray.first as? CodeNode {
+            if let code = chunk.first as? CodeNode {
                 return String(code.code)
             }
 
             // Output nodes are batched into print statements
-            return printStatement(for: chunkArray)
+            return printStatement(for: chunk)
         }
 
         return lines.joined(separator: "\n")
@@ -165,7 +163,7 @@ struct CodeGenerator {
     }
 
     /// Returns the start position of `nodes`'s first element.
-    private func sourceLocationIndex(for nodes: [ASTNode]) -> String.Index {
+    private func sourceLocationIndex(for nodes: AST.SubSequence) -> String.Index {
         let first = nodes.first!
 
         if let literal = first as? LiteralNode {
@@ -177,7 +175,7 @@ struct CodeGenerator {
     }
 
     /// Returns `nodes`'s text content as strings, with substitutions formatted as `\(expression)`.
-    private func textContent(from nodes: [ASTNode]) -> [String] {
+    private func textContent(from nodes: AST.SubSequence) -> [String] {
         return nodes.map { node in
             if let literal = node as? LiteralNode {
                 return String(literal.text)
@@ -189,7 +187,7 @@ struct CodeGenerator {
     }
 
     /// Returns a Swift print statement outputting `nodes`'s combined text, prefixed by a source location directive when configured.
-    private func printStatement(for nodes: [ASTNode]) -> String {
+    private func printStatement(for nodes: AST.SubSequence) -> String {
         let combined = textContent(from: nodes).joined()
         var result: [String] = []
 
