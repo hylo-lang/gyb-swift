@@ -7,7 +7,7 @@ import Testing
 /// Executes `text` as a template and returns the output.
 func execute(
     _ text: String,
-    bindings: [String: Any] = [:],
+    bindings: [String: String] = [:],
     filename: String = "test",
     lineDirective: String = ""
 ) throws -> String {
@@ -24,7 +24,7 @@ func execute(
 /// Generates Swift code for `text` as a template with `bindings`.
 func generateCode(
     _ text: String,
-    bindings: [String: Any] = [:],
+    bindings: [String: String] = [:],
     filename: String = "test.gyb",
     lineDirective: String = "//# line \\(line) \"\\(file)\"",
     emitSourceLocation: Bool = true

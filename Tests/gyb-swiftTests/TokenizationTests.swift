@@ -221,7 +221,7 @@ func tokenize_pythonDoctest1() {
 func tokenize_pythonDoctest2() {
     let text = """
         Nothing
-        % if x != 0 {
+        % if x != "0" {
         %    for i in 0..<3 {
         ${i}
         %    }
@@ -235,7 +235,7 @@ func tokenize_pythonDoctest2() {
     // Verify exact token sequence (newlines after %-lines are consumed by tokenizer)
     let expected = [
         token(.literal, "Nothing\n"),
-        token(.gybLines, "% if x != 0 {"),
+        token(.gybLines, "% if x != \"0\" {"),
         token(.gybLines, "%    for i in 0..<3 {"),
         token(.substitutionOpen, "${i}"),
         token(.literal, "\n"),

@@ -11,7 +11,7 @@ func integration_realisticTemplate() throws {
         }
         """
 
-    let result = try execute(text, bindings: ["count": 42], filename: "test.gyb")
+    let result = try execute(text, bindings: ["count": "42"], filename: "test.gyb")
 
     let expected = """
         // Generated file

@@ -97,13 +97,13 @@ struct GYBSwift: ParsableCommand {
     mutating func run() throws {
 
         // Parse variable bindings
-        let bindings: [String: Any] = try Dictionary(
+        let bindings: [String: String] = try Dictionary(
             uniqueKeysWithValues: defines.map { define in
                 let parts = define.split(separator: "=", maxSplits: 1)
                 guard parts.count == 2 else {
                     throw ValidationError("Invalid binding format: \(define). Expected NAME=VALUE")
                 }
-                return (String(parts[0]), String(parts[1]) as Any)
+                return (String(parts[0]), String(parts[1]))
             }
         )
 

@@ -7,7 +7,7 @@ import Testing
 func lineDirective_loopIterations() throws {
     let text = """
         Nothing
-        % if x != 0 {
+        % if x != "0" {
         %    for i in 0..<3 {
         ${i}
         %    }
@@ -16,14 +16,14 @@ func lineDirective_loopIterations() throws {
         % }
         """
 
-    let code = try generateCode(text, bindings: ["x": 1])
+    let code = try generateCode(text, bindings: ["x": "1"])
 
     // Verify exact generated code structure with line directives
     let expectedCode = """
         import Foundation
 
         // Bindings
-        let x = 1
+        let x = "1"
 
         // Generated code
         //# line 1 "test.gyb"
@@ -31,7 +31,7 @@ func lineDirective_loopIterations() throws {
         Nothing
 
         \"\"\", terminator: "")
-        if x != 0 {
+        if x != "0" {
         for i in 0..<3 {
         //# line 4 "test.gyb"
         print(\"\"\"
@@ -53,7 +53,7 @@ func lineDirective_loopIterations() throws {
     // Verify execution produces correct output
     let result = try execute(
         text,
-        bindings: ["x": 1],
+        bindings: ["x": "1"],
         filename: "test.gyb",
         lineDirective: "//# line \\(line) \"\\(file)\""
     )

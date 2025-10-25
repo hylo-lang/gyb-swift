@@ -21,7 +21,7 @@ func execute_templateWithEscapedSymbols() throws {
 @Test("substitution with bound variable")
 func substitution_withSimpleBinding() throws {
     let text = "x = ${x}"
-    let result = try execute(text, bindings: ["x": 42])
+    let result = try execute(text, bindings: ["x": "42"])
     #expect(result == "x = 42")
 }
 

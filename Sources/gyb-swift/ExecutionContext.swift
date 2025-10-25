@@ -76,12 +76,12 @@ struct CodeGenerator {
     }
 
     /// Returns a complete Swift program for `ast` with `bindings`.
-    func generateCompleteProgram(_ ast: AST, bindings: [String: Any] = [:]) -> String {
+    func generateCompleteProgram(_ ast: AST, bindings: [String: String] = [:]) -> String {
         // Generate bindings code
         let bindingsCode =
             bindings
             .filter { $0.key != "__children__" && $0.key != "__context__" }
-            .map { "let \($0.key) = \(Self.formatValue($0.value))" }
+            .map { "let \($0.key) = \(String(reflecting: $0.value))" }
             .joined(separator: "\n")
 
         // Generate template code
@@ -100,7 +100,7 @@ struct CodeGenerator {
     }
 
     /// Executes `ast` with `bindings` by compiling and running generated Swift code.
-    func execute(_ ast: AST, bindings: [String: Any] = [:]) throws -> String {
+    func execute(_ ast: AST, bindings: [String: String] = [:]) throws -> String {
         // Generate complete Swift program without source location directives
         let executionGenerator = CodeGenerator(
             templateText: templateText,
@@ -211,30 +211,6 @@ struct CodeGenerator {
     /// Returns whether `node` represents template output.
     private func isOutputNode(_ node: ASTNode) -> Bool {
         return node is LiteralNode || node is SubstitutionNode
-    }
-
-    /// Formats `value` for embedding in generated code.
-    private static func formatValue(_ value: Any) -> String {
-        switch value {
-        case let str as String:
-            // Escape quotes and backslashes
-            let escaped =
-                str
-                .replacingOccurrences(of: "\\", with: "\\\\")
-                .replacingOccurrences(of: "\"", with: "\\\"")
-            return "\"\(escaped)\""
-        case let num as Int:
-            return "\(num)"
-        case let num as Double:
-            return "\(num)"
-        case let bool as Bool:
-            return "\(bool)"
-        case let array as [Any]:
-            let elements = array.map { formatValue($0) }.joined(separator: ", ")
-            return "[\(elements)]"
-        default:
-            return "\"\(value)\""
-        }
     }
 }
 
