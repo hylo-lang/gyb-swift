@@ -57,11 +57,7 @@ func tokenize_literal() {
 
 @Test("tokenize $$ escape sequence")
 func tokenize_escapedDollar() {
-    var tokenizer = TemplateTokens(text: "$$100")
-    var tokens: [TemplateToken] = []
-    while let token = tokenizer.next() {
-        tokens.append(token)
-    }
+    let tokens = Array(TemplateTokens(text: "$$100"))
     
     let expected = [
         token(.symbol, "$$"),
@@ -72,11 +68,7 @@ func tokenize_escapedDollar() {
 
 @Test("tokenize %% escape sequence")
 func tokenize_escapedPercent() {
-    var tokenizer = TemplateTokens(text: "100%%")
-    var tokens: [TemplateToken] = []
-    while let token = tokenizer.next() {
-        tokens.append(token)
-    }
+    let tokens = Array(TemplateTokens(text: "100%%"))
     
     let expected = [
         token(.literal, "100"),
@@ -87,11 +79,7 @@ func tokenize_escapedPercent() {
 
 @Test("tokenize ${} substitution")
 func tokenize_substitution() {
-    var tokenizer = TemplateTokens(text: "${x}")
-    var tokens: [TemplateToken] = []
-    while let token = tokenizer.next() {
-        tokens.append(token)
-    }
+    let tokens = Array(TemplateTokens(text: "${x}"))
     
     let expected = [
         token(.substitutionOpen, "${x}")
@@ -101,11 +89,7 @@ func tokenize_substitution() {
 
 @Test("tokenize %{} code block")
 func tokenize_codeBlock() {
-    var tokenizer = TemplateTokens(text: "%{ let x = 42 }%")
-    var tokens: [TemplateToken] = []
-    while let token = tokenizer.next() {
-        tokens.append(token)
-    }
+    let tokens = Array(TemplateTokens(text: "%{ let x = 42 }%"))
     
     let expected = [
         token(.gybBlockOpen, "%{ let x = 42 }%")
@@ -118,11 +102,7 @@ func tokenize_codeBlock() {
 // Without proper tokenization, the naive scanner would incorrectly
 // stop at the }% inside the string literal.
 func codeBlock_delimiterInString() {
-    var tokenizer = TemplateTokens(text: #"%{ let msg = "Error: }% not allowed" }%Done"#)
-    var tokens: [TemplateToken] = []
-    while let token = tokenizer.next() {
-        tokens.append(token)
-    }
+    let tokens = Array(TemplateTokens(text: #"%{ let msg = "Error: }% not allowed" }%Done"#))
     
     #expect(tokens.count == 2)
     #expect(tokens[0].kind == .gybBlockOpen)
@@ -135,11 +115,7 @@ func codeBlock_delimiterInString() {
 // This verifies SwiftSyntax correctly handles dictionary/subscript syntax
 // where } appears in string keys.
 func substitution_braceInString() {
-    var tokenizer = TemplateTokens(text: #"${dict["key}value"]}Done"#)
-    var tokens: [TemplateToken] = []
-    while let token = tokenizer.next() {
-        tokens.append(token)
-    }
+    let tokens = Array(TemplateTokens(text: #"${dict["key}value"]}Done"#))
     
     #expect(tokens.count == 2)
     #expect(tokens[0].kind == .substitutionOpen)
@@ -151,11 +127,7 @@ func substitution_braceInString() {
 @Test("multiple nested strings with delimiters")
 func nestedStrings_withDelimiters() {
     let text = #"%{ let a = "first }% here"; let b = "second }% there" }%"#
-    var tokenizer = TemplateTokens(text: text)
-    var tokens: [TemplateToken] = []
-    while let token = tokenizer.next() {
-        tokens.append(token)
-    }
+    let tokens = Array(TemplateTokens(text: text))
     
     #expect(tokens.count == 1)
     #expect(tokens[0].kind == .gybBlockOpen)
@@ -169,11 +141,7 @@ func nestedStrings_withDelimiters() {
 func parser_resilientWithInvalidSwift() {
     // Test case: valid Swift code followed by template text
     // When parsing ${count}, we actually parse "count}Done" which is invalid Swift
-    var tokenizer = TemplateTokens(text: "${count}Done")
-    var tokens: [TemplateToken] = []
-    while let token = tokenizer.next() {
-        tokens.append(token)
-    }
+    let tokens = Array(TemplateTokens(text: "${count}Done"))
     
     #expect(tokens.count == 2)
     #expect(tokens[0].kind == .substitutionOpen)
@@ -185,11 +153,7 @@ func parser_resilientWithInvalidSwift() {
 @Test("%{...}% code blocks with nested braces from closures")
 func codeBlock_withClosure() {
     let text = #"%{ items.forEach { print($0) } }%Done"#
-    var tokenizer = TemplateTokens(text: text)
-    var tokens: [TemplateToken] = []
-    while let token = tokenizer.next() {
-        tokens.append(token)
-    }
+    let tokens = Array(TemplateTokens(text: text))
     
     #expect(tokens.count == 2)
     #expect(tokens[0].kind == .gybBlockOpen)
@@ -200,11 +164,7 @@ func codeBlock_withClosure() {
 @Test("%{...}% code blocks with nested braces from dictionaries")
 func codeBlock_withDictionary() {
     let text = #"%{ let dict = ["key": "value"]; let x = dict["key"] }%After"#
-    var tokenizer = TemplateTokens(text: text)
-    var tokens: [TemplateToken] = []
-    while let token = tokenizer.next() {
-        tokens.append(token)
-    }
+    let tokens = Array(TemplateTokens(text: text))
     
     #expect(tokens.count == 2)
     #expect(tokens[0].kind == .gybBlockOpen)
@@ -222,11 +182,7 @@ func codeBlock_nestedControlStructures() {
         }
     } }%Done
     """#
-    var tokenizer = TemplateTokens(text: text)
-    var tokens: [TemplateToken] = []
-    while let token = tokenizer.next() {
-        tokens.append(token)
-    }
+    let tokens = Array(TemplateTokens(text: text))
     
     #expect(tokens.count == 2)
     #expect(tokens[0].kind == .gybBlockOpen)
@@ -244,11 +200,7 @@ func codeBlock_nestedControlStructures() {
 @Test("%{...}% code blocks with generics containing angle brackets")
 func codeBlock_withGenerics() {
     let text = #"%{ let arr: Array<[String: Int]> = [] }%Text"#
-    var tokenizer = TemplateTokens(text: text)
-    var tokens: [TemplateToken] = []
-    while let token = tokenizer.next() {
-        tokens.append(token)
-    }
+    let tokens = Array(TemplateTokens(text: text))
     
     #expect(tokens.count == 2)
     #expect(tokens[0].kind == .gybBlockOpen)
@@ -259,11 +211,7 @@ func codeBlock_withGenerics() {
 @Test("%{...}% code blocks with trailing closure syntax")
 func codeBlock_trailingClosure() {
     let text = #"%{ let result = numbers.map { $0 * 2 } }%End"#
-    var tokenizer = TemplateTokens(text: text)
-    var tokens: [TemplateToken] = []
-    while let token = tokenizer.next() {
-        tokens.append(token)
-    }
+    let tokens = Array(TemplateTokens(text: text))
     
     #expect(tokens.count == 2)
     #expect(tokens[0].kind == .gybBlockOpen)
@@ -301,11 +249,7 @@ func tokenize_codeLines() {
 // Swift-style loop with closing brace
 func tokenize_pythonDoctest1() {
     let text = "% for x in 0..<10 {\n%  print(x)\n% }\njuicebox"
-    var tokenizer = TemplateTokens(text: text)
-    var tokens: [TemplateToken] = []
-    while let token = tokenizer.next() {
-        tokens.append(token)
-    }
+    let tokens = Array(TemplateTokens(text: text))
     
     // Swift tokenizes each %-line separately (newlines after %-lines are consumed by tokenizer)
     let expected = [
@@ -331,11 +275,7 @@ THIS SHOULD NOT APPEAR IN THE OUTPUT
 % }
 
 """
-    var tokenizer = TemplateTokens(text: text)
-    var tokens: [TemplateToken] = []
-    while let token = tokenizer.next() {
-        tokens.append(token)
-    }
+    let tokens = Array(TemplateTokens(text: text))
     
     // Verify exact token sequence (newlines after %-lines are consumed by tokenizer)
     let expected = [
@@ -365,11 +305,7 @@ and %-lines:
 % }
 
 """
-    var tokenizer = TemplateTokens(text: text)
-    var tokens: [TemplateToken] = []
-    while let token = tokenizer.next() {
-        tokens.append(token)
-    }
+    let tokens = Array(TemplateTokens(text: text))
     
     // Verify exact token sequence (%-lines consume trailing newline, "and %-lines:" is parsed as %-line)
     let expected = [
