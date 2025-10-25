@@ -1,5 +1,5 @@
-import Foundation
 import Algorithms
+import Foundation
 
 // MARK: - String Utilities
 
@@ -15,4 +15,3 @@ func getLineNumber(for index: String.Index, in text: String, lineStarts: [String
     // lineStarts is sorted, so partitioningIndex performs O(log N) binary search
     return lineStarts.partitioningIndex { $0 > index }
 }
-

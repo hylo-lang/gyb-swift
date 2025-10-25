@@ -1,6 +1,6 @@
 import Foundation
-import SwiftSyntax
 import SwiftParser
+import SwiftSyntax
 
 // MARK: - Token Types
 
@@ -10,15 +10,15 @@ struct TemplateToken: Equatable {
     enum Kind: Equatable {
         case literal
         case substitutionOpen  // ${...}
-        case gybLines          // %-lines (including % }, % } else {, etc.)
-        case gybBlock          // %{...}%
-        case symbol            // %% or $$
+        case gybLines  // %-lines (including % }, % } else {, etc.)
+        case gybBlock  // %{...}%
+        case symbol  // %% or $$
     }
-    
+
     let kind: Kind
     let text: Substring
     // Note: text.startIndex gives position in original template
-    
+
     // Custom equality that compares text content, not indices
     static func == (lhs: TemplateToken, rhs: TemplateToken) -> Bool {
         return lhs.kind == rhs.kind && String(lhs.text) == String(rhs.text)
@@ -32,15 +32,15 @@ struct TemplateToken: Equatable {
 // a character-by-character state machine which is more maintainable and handles Swift syntax correctly.
 struct TemplateTokens: Sequence, IteratorProtocol {
     private var remainingText: Substring
-    
+
     init(text: String) {
         self.remainingText = text[...]
     }
-    
+
     /// Returns the next token, or nil when exhausted.
     mutating func next() -> TemplateToken? {
         guard let char = remainingText.first else { return nil }
-        
+
         // Check for special sequences
         if char == "$" {
             return handleDollar()
@@ -50,7 +50,7 @@ struct TemplateTokens: Sequence, IteratorProtocol {
             return handleLiteral()
         }
     }
-    
+
     /// Handles $ character (substitution or escaped $).
     private mutating func handleDollar() -> TemplateToken? {
         let rest = remainingText.dropFirst()
@@ -59,7 +59,7 @@ struct TemplateTokens: Sequence, IteratorProtocol {
             remainingText = rest
             return token
         }
-        
+
         if nextChar == "$" {
             // $$ -> literal $
             let token = TemplateToken(kind: .symbol, text: remainingText.prefix(2))
@@ -75,7 +75,7 @@ struct TemplateTokens: Sequence, IteratorProtocol {
             return token
         }
     }
-    
+
     /// Handles % character (code lines, blocks, or escaped %).
     private mutating func handlePercent() -> TemplateToken? {
         let rest = remainingText.dropFirst()
@@ -84,7 +84,7 @@ struct TemplateTokens: Sequence, IteratorProtocol {
             remainingText = rest
             return token
         }
-        
+
         if nextChar == "%" {
             // %% -> literal %
             let token = TemplateToken(kind: .symbol, text: remainingText.prefix(2))
@@ -101,15 +101,15 @@ struct TemplateTokens: Sequence, IteratorProtocol {
             return handleCodeLine()
         }
     }
-    
+
     /// Handles ${...} substitution using Swift tokenization for `}` in strings.
     private mutating func handleSubstitution() -> TemplateToken? {
         // Skip ${
         let codePart = remainingText.dropFirst(2)
-        
+
         // Use Swift tokenizer to find the real closing }
         let closeIndex = tokenizeSwiftToUnmatchedCloseCurly(codePart)
-        
+
         if closeIndex < codePart.endIndex {
             // Include ${ + code + }
             let endIndex = remainingText.index(after: closeIndex)
@@ -117,44 +117,44 @@ struct TemplateTokens: Sequence, IteratorProtocol {
             remainingText = remainingText[endIndex...]
             return TemplateToken(kind: .substitutionOpen, text: tokenText)
         }
-        
+
         // Unclosed substitution - treat as literal
         let token = TemplateToken(kind: .literal, text: remainingText.prefix(1))
         remainingText = remainingText.dropFirst()
         return token
     }
-    
+
     /// Handles %{...}% code block using Swift tokenization for `}%` in strings.
     private mutating func handleCodeBlock() -> TemplateToken? {
         // Skip %{
         let codePart = remainingText.dropFirst(2)
-        
+
         // Use Swift tokenizer to find the real closing }
         let closeIndex = tokenizeSwiftToUnmatchedCloseCurly(codePart)
-        
+
         if closeIndex < codePart.endIndex {
             let afterClose = codePart.index(after: closeIndex)
             if afterClose < codePart.endIndex && codePart[afterClose] == "%" {
                 // Include %{ + code + }%
                 var endIndex = codePart.index(after: afterClose)
-                
+
                 // Skip trailing newline if present
                 if endIndex < remainingText.endIndex && remainingText[endIndex].isNewline {
                     endIndex = remainingText.index(after: endIndex)
                 }
-                
+
                 let tokenText = remainingText[..<endIndex]
                 remainingText = remainingText[endIndex...]
                 return TemplateToken(kind: .gybBlock, text: tokenText)
             }
         }
-        
+
         // Unclosed block - treat as literal
         let token = TemplateToken(kind: .literal, text: remainingText.prefix(1))
         remainingText = remainingText.dropFirst()
         return token
     }
-    
+
     /// Handles % code lines.
     /// Swift is brace-delimited, so we treat all %-lines uniformly as code.
     /// No special handling for % } or %end - just emit the code as-is.
@@ -163,19 +163,19 @@ struct TemplateTokens: Sequence, IteratorProtocol {
         let line = remainingText.prefix(while: { !$0.isNewline })
         let afterLine = remainingText.dropFirst(line.count)
         remainingText = afterLine.isEmpty ? afterLine : afterLine.dropFirst()
-        
+
         return TemplateToken(kind: .gybLines, text: line)
     }
-    
+
     /// Handles literal text.
     private mutating func handleLiteral() -> TemplateToken? {
         // Read until we hit $ or %
         let literal = remainingText.prefix(while: { $0 != "$" && $0 != "%" })
-        
+
         // If we got nothing, take one character (shouldn't happen but be safe)
         let tokenText = literal.isEmpty ? remainingText.prefix(1) : literal
         remainingText = remainingText.dropFirst(tokenText.count)
-        
+
         return TemplateToken(kind: .literal, text: tokenText)
     }
 }
@@ -187,18 +187,18 @@ struct TemplateTokens: Sequence, IteratorProtocol {
 func tokenizeSwiftToUnmatchedCloseCurly(_ code: Substring) -> String.Index {
     // Parse the Swift code (SwiftSyntax requires a String)
     let source = Parser.parse(source: String(code))
-    
+
     // Walk the syntax tree looking for braces
     class BraceVisitor: SyntaxVisitor {
         var nesting = 0
         var closeBraceOffset: Int?
-        
+
         override func visit(_ token: TokenSyntax) -> SyntaxVisitorContinueKind {
             // If we already found the close brace, stop walking
             if closeBraceOffset != nil {
                 return .skipChildren
             }
-            
+
             if token.tokenKind == .leftBrace {
                 nesting += 1
             } else if token.tokenKind == .rightBrace {
@@ -213,10 +213,10 @@ func tokenizeSwiftToUnmatchedCloseCurly(_ code: Substring) -> String.Index {
             return .visitChildren
         }
     }
-    
+
     let visitor = BraceVisitor(viewMode: .all)
     visitor.walk(source)
-    
+
     if let utf8Offset = visitor.closeBraceOffset {
         // Convert UTF-8 offset to String.Index efficiently using the Substring's utf8 view
         // The Substring shares indices with its parent, so this index is already valid there!
@@ -225,6 +225,6 @@ func tokenizeSwiftToUnmatchedCloseCurly(_ code: Substring) -> String.Index {
             return stringIndex
         }
     }
-    
+
     return code.endIndex
 }

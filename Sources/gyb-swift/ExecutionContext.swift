@@ -1,5 +1,5 @@
-import Foundation
 import Algorithms
+import Foundation
 
 // MARK: - Errors
 
@@ -8,7 +8,7 @@ enum GYBError: Error, CustomStringConvertible {
     case compilationFailed(String)
     case executionFailed(String)
     case parseError(String)
-    
+
     var description: String {
         switch self {
         case .compilationFailed(let message):
@@ -26,7 +26,7 @@ enum GYBError: Error, CustomStringConvertible {
 /// Returns the start position of `nodes`'s first element.
 private func sourceLocationIndex(for nodes: [ASTNode]) -> String.Index {
     let first = nodes.first!
-    
+
     if let literal = first as? LiteralNode {
         return literal.text.startIndex
     } else if let substitution = first as? SubstitutionNode {
@@ -49,7 +49,8 @@ private func textContent(from nodes: [ASTNode]) -> [String] {
 
 /// Returns `text` escaped for Swift multiline string literals, preserving `\(...)` interpolations.
 private func escapeForSwiftMultilineString(_ text: String) -> String {
-    return text
+    return
+        text
         .replacingOccurrences(of: "\\", with: "\\\\")
         .replacingOccurrences(of: "\"\"\"", with: "\\\"\\\"\\\"")
         .replacingOccurrences(of: "\\\\(", with: "\\(")
@@ -57,7 +58,8 @@ private func escapeForSwiftMultilineString(_ text: String) -> String {
 
 /// Returns `template`'s `\(file)` and `\(line)` placeholders replaced by `filename` and `line`.
 private func formatSourceLocation(_ template: String, filename: String, line: Int) -> String {
-    return template
+    return
+        template
         .replacingOccurrences(of: "\\(file)", with: filename)
         .replacingOccurrences(of: "\\(line)", with: "\(line)")
 }
@@ -73,18 +75,18 @@ private func printStatement(
 ) -> String {
     let combined = textContent(from: nodes).joined()
     var result: [String] = []
-    
+
     // Emit source location directive if requested
-    if emitSourceLocation, !filename.isEmpty {
+    if emitSourceLocation {
         let index = sourceLocationIndex(for: nodes)
         let lineNumber = getLineNumber(for: index, in: templateText, lineStarts: lineStarts)
         let directive = formatSourceLocation(lineDirective, filename: filename, line: lineNumber)
         result.append(directive)
     }
-    
+
     let escaped = escapeForSwiftMultilineString(combined)
     result.append("print(\"\"\"\n\(escaped)\n\"\"\", terminator: \"\")")
-    
+
     return result.joined(separator: "\n")
 }
 
@@ -102,20 +104,20 @@ func astNodesToSwiftCode(
     emitSourceLocation: Bool = true
 ) -> String {
     let lineStarts = getLineStarts(templateText)
-    
+
     // Group consecutive output nodes together; keep code nodes separate
     let chunks = nodes.chunked { prev, curr in
         isOutputNode(prev) && isOutputNode(curr)
     }
-    
+
     let lines = chunks.map { chunk -> String in
         let chunkArray = Array(chunk)
-        
+
         // Code nodes are emitted directly
         if let code = chunkArray.first as? CodeNode {
             return String(code.code)
         }
-        
+
         // Output nodes are batched into print statements
         return printStatement(
             for: chunkArray,
@@ -126,7 +128,7 @@ func astNodesToSwiftCode(
             emitSourceLocation: emitSourceLocation
         )
     }
-    
+
     return lines.joined(separator: "\n")
 }
 
@@ -142,11 +144,12 @@ func generateSwiftCode(
     emitSourceLocation: Bool = true
 ) throws -> String {
     // Generate complete Swift program
-    let bindingsCode = bindings
+    let bindingsCode =
+        bindings
         .filter { $0.key != "__children__" && $0.key != "__context__" }  // Filter internal bindings
         .map { "let \($0.key) = \(formatValue($0.value))" }
         .joined(separator: "\n")
-    
+
     let swiftCode = astNodesToSwiftCode(
         ast.children,
         templateText: templateText,
@@ -154,17 +157,17 @@ func generateSwiftCode(
         lineDirective: lineDirective,
         emitSourceLocation: emitSourceLocation
     )
-    
+
     return """
-    import Foundation
-    
-    // Bindings
-    \(bindingsCode)
-    
-    // Generated code
-    \(swiftCode)
-    
-    """
+        import Foundation
+
+        // Bindings
+        \(bindingsCode)
+
+        // Generated code
+        \(swiftCode)
+
+        """
 }
 
 /// Formats a Swift value for embedding in generated code.
@@ -172,7 +175,8 @@ private func formatValue(_ value: Any) -> String {
     switch value {
     case let str as String:
         // Escape quotes and backslashes
-        let escaped = str
+        let escaped =
+            str
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
         return "\"\(escaped)\""
@@ -224,55 +228,55 @@ private func executeTemplateAsWholeProgram(
         lineDirective: lineDirective,
         emitSourceLocation: false  // Don't emit line directives for execution
     )
-    
+
     // Write to temporary file
     let tempDir = FileManager.default.temporaryDirectory
     let sourceFile = tempDir.appendingPathComponent("gyb_\(UUID().uuidString).swift")
     let executableFile = tempDir.appendingPathComponent("gyb_\(UUID().uuidString)")
-    
+
     defer {
         try? FileManager.default.removeItem(at: sourceFile)
         try? FileManager.default.removeItem(at: executableFile)
     }
-    
+
     try swiftCode.write(to: sourceFile, atomically: true, encoding: .utf8)
-    
+
     // Compile
     let compileProcess = Process()
     compileProcess.executableURL = URL(fileURLWithPath: "/usr/bin/swiftc")
     compileProcess.arguments = ["-o", executableFile.path, sourceFile.path]
-    
+
     let compileErrorPipe = Pipe()
     compileProcess.standardError = compileErrorPipe
     compileProcess.standardOutput = compileErrorPipe
-    
+
     try compileProcess.run()
     compileProcess.waitUntilExit()
-    
+
     if compileProcess.terminationStatus != 0 {
         let errorData = compileErrorPipe.fileHandleForReading.readDataToEndOfFile()
         let errorMessage = String(data: errorData, encoding: .utf8) ?? "Unknown compilation error"
         throw GYBError.compilationFailed(errorMessage)
     }
-    
+
     // Execute
     let runProcess = Process()
     runProcess.executableURL = executableFile
-    
+
     let outputPipe = Pipe()
     let errorPipe = Pipe()
     runProcess.standardOutput = outputPipe
     runProcess.standardError = errorPipe
-    
+
     try runProcess.run()
     runProcess.waitUntilExit()
-    
+
     if runProcess.terminationStatus != 0 {
         let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
         let errorMessage = String(data: errorData, encoding: .utf8) ?? "Unknown execution error"
         throw GYBError.executionFailed(errorMessage)
     }
-    
+
     let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
     return String(data: outputData, encoding: .utf8) ?? ""
 }

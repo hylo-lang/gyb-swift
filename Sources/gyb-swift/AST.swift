@@ -10,7 +10,7 @@ protocol ASTNode: CustomStringConvertible {}
 /// Literal text from the template.
 struct LiteralNode: ASTNode {
     let text: Substring
-    
+
     var description: String {
         "Literal: \(text.prefix(20))\(text.dropFirst(20).isEmpty ? "" : "...")"
     }
@@ -21,7 +21,7 @@ struct LiteralNode: ASTNode {
 /// Swift code to be executed (from %-lines or %{...}% blocks).
 struct CodeNode: ASTNode {
     let code: Substring
-    
+
     var description: String {
         "Code: {\(code.prefix(30))\(code.dropFirst(30).isEmpty ? "" : "...")}"
     }
@@ -32,7 +32,7 @@ struct CodeNode: ASTNode {
 /// A ${...} expression whose result is converted to text and inserted into the output.
 struct SubstitutionNode: ASTNode {
     let expression: Substring
-    
+
     var description: String {
         "Substitution: ${\(expression)}"
     }
@@ -44,11 +44,11 @@ struct SubstitutionNode: ASTNode {
 /// Note: This is just a container; nesting is handled by Swift's compiler, not by the parser.
 struct BlockNode: ASTNode {
     let children: [ASTNode]
-    
+
     init(children: [ASTNode]) {
         self.children = children
     }
-    
+
     var description: String {
         "Block: [\n" + children.map { "  \($0.description)\n" }.joined() + "]"
     }
@@ -69,12 +69,12 @@ private func extractCodeFromBlockToken(_ token: Substring) -> Substring {
 struct ParseContext {
     let filename: String
     let templateText: String
-    
+
     init(filename: String, text: String) {
         self.filename = filename
         self.templateText = text
     }
-    
+
     /// Returns AST nodes parsed from the template.
     /// Simply converts each token to a node - no nesting logic.
     mutating func parseNodes() throws -> [ASTNode] {
@@ -82,26 +82,26 @@ struct ParseContext {
             switch token.kind {
             case .literal:
                 return LiteralNode(text: token.text)
-                
+
             case .substitutionOpen:
                 // Extract expression between ${ and }
                 return SubstitutionNode(expression: token.text.dropFirst(2).dropLast())
-                
+
             case .gybLines:
                 // Extract code from %-lines
                 return CodeNode(code: extractCodeFromLines(token.text))
-                
+
             case .gybBlock:
                 // Extract code between %{ and }%
                 return CodeNode(code: extractCodeFromBlockToken(token.text))
-                
+
             case .symbol:
                 // %% or $$ becomes single % or $
                 return LiteralNode(text: token.text.prefix(1))
             }
         }
     }
-    
+
     /// Returns executable code from %-lines with leading % and indentation removed.
     private func extractCodeFromLines(_ text: Substring) -> Substring {
         text.split(omittingEmptySubsequences: false) { $0.isNewline }
