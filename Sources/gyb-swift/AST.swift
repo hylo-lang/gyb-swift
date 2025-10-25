@@ -1,6 +1,4 @@
 import Foundation
-import SwiftSyntax
-import SwiftParser
 
 // MARK: - AST Node Protocol
 
@@ -21,7 +19,7 @@ struct LiteralNode: ASTNode {
 
 // MARK: - Code Node
 
-/// Swift code to be executed, which may produce output via print().
+/// Swift code to be executed (from %-lines or %{...}% blocks).
 struct CodeNode: ASTNode {
     let code: Substring
     let line: Int
@@ -43,59 +41,25 @@ struct SubstitutionNode: ASTNode {
     }
 }
 
-// MARK: - Block Node
+// MARK: - Block Node (Top-Level Container Only)
 
-/// A sequence of child nodes, possibly with code controlling their execution (e.g., loop or conditional).
+/// Top-level container for template nodes.
+/// Note: This is just a container; nesting is handled by Swift's compiler, not by the parser.
 struct BlockNode: ASTNode {
-    let code: Substring?
     let children: [ASTNode]
     let line: Int
     
-    init(code: Substring? = nil, children: [ASTNode], line: Int = 1) {
-        self.code = code
+    init(children: [ASTNode], line: Int = 1) {
         self.children = children
         self.line = line
     }
     
     var description: String {
-        let parts = [
-            "Block: [",
-            code.map { "\n  Code: {\($0.prefix(40))\($0.dropFirst(40).isEmpty ? "" : "...")}" } ?? "",
-            "\n  [\n",
-            children.map { "    \($0.description.replacingOccurrences(of: "\n", with: "\n    "))\n" }.joined(),
-            "  ]\n]"
-        ]
-        return parts.joined()
+        "Block: [\n" + children.map { "  \($0.description)\n" }.joined() + "]"
     }
 }
 
 // MARK: - Helper Functions
-
-/// Counts unmatched braces in Swift code, properly handling strings and comments.
-/// Returns positive if more opening braces, negative if more closing braces, 0 if balanced.
-private func countUnmatchedBraces(_ code: Substring) -> Int {
-    let source = Parser.parse(source: String(code))
-    
-    class BraceCounter: SyntaxVisitor {
-        var count = 0
-        
-        override func visit(_ token: TokenSyntax) -> SyntaxVisitorContinueKind {
-            switch token.tokenKind {
-            case .leftBrace:
-                count += 1
-            case .rightBrace:
-                count -= 1
-            default:
-                break
-            }
-            return .visitChildren
-        }
-    }
-    
-    let counter = BraceCounter(viewMode: .all)
-    counter.walk(source)
-    return counter.count
-}
 
 /// Extracts code content from a gybBlockOpen token (%{...}%).
 /// Removes the %{ prefix, }% suffix, and optional trailing newline.
@@ -126,16 +90,14 @@ struct ParseContext {
     }
     
     /// Advances position to `index`.
-    ///
-    /// - Precondition: `index >= position`.
     mutating func advance(to index: String.Index) {
-        // Only advance forward, never backward (can happen when processing nested tokens)
         if index > position {
             position = index
         }
     }
     
     /// Returns AST nodes parsed from the template.
+    /// Simply converts each token to a node - no nesting logic.
     mutating func parseNodes() throws -> [ASTNode] {
         var nodes: [ASTNode] = []
         var tokenIterator = TemplateTokens(text: templateText)
@@ -155,105 +117,16 @@ struct ParseContext {
                 nodes.append(SubstitutionNode(expression: token.text.dropFirst(2).dropLast(), line: line))
                 
             case .gybLines:
-                // Parse %-lines
+                // Extract code from %-lines
                 let code = extractCodeFromLines(token.text)
-                
-                // Check if this line has unmatched braces using SwiftSyntax
-                let braceBalance = countUnmatchedBraces(code)
-                
-                if braceBalance > 0 {
-                    // This line opens a block - collect children until we see a %-line that closes it
-                    var blockChildren: [ASTNode] = []
-                    
-                    while let nextToken = tokenIterator.next() {
-                        // Calculate line number from token position without advancing parser position
-                        let tokenPos = nextToken.text.startIndex
-                        let childLine = lineStarts.firstIndex { $0 > tokenPos }.map { $0 } ?? lineStarts.count
-                        
-                        // Check if this is a %-line that closes the block (has unmatched closing braces)
-                        if nextToken.kind == .gybLines {
-                            let childCode = extractCodeFromLines(nextToken.text)
-                            let childBraceBalance = countUnmatchedBraces(childCode)
-                            
-                            // If this line has net closing braces, it closes our block
-                            if childBraceBalance < 0 {
-                                // This line closes the block - add it as a child block node
-                                blockChildren.append(BlockNode(code: childCode, children: [], line: childLine))
-                                break
-                            }
-                            
-                            // Check if this nested line opens its own block
-                            if childBraceBalance > 0 {
-                                // Nested block - recursively collect its children
-                                var nestedChildren: [ASTNode] = []
-                                while let nestedToken = tokenIterator.next() {
-                                    let nestedPos = nestedToken.text.startIndex
-                                    let nestedLine = lineStarts.firstIndex { $0 > nestedPos }.map { $0 } ?? lineStarts.count
-                                    
-                                    // Check for closing %-line
-                                    if nestedToken.kind == .gybLines {
-                                        let nestedCode = extractCodeFromLines(nestedToken.text)
-                                        let nestedBraceBalance = countUnmatchedBraces(nestedCode)
-                                        if nestedBraceBalance < 0 {
-                                            nestedChildren.append(BlockNode(code: nestedCode, children: [], line: nestedLine))
-                                            break
-                                        }
-                                        nestedChildren.append(CodeNode(code: nestedCode, line: nestedLine))
-                                        continue
-                                    }
-                                    
-                                    // Parse other nested tokens
-                                    switch nestedToken.kind {
-                                    case .literal:
-                                        if !nestedToken.text.isEmpty {
-                                            nestedChildren.append(LiteralNode(text: nestedToken.text, line: nestedLine))
-                                        }
-                                    case .substitutionOpen:
-                                        nestedChildren.append(SubstitutionNode(expression: nestedToken.text.dropFirst(2).dropLast(), line: nestedLine))
-                                    case .symbol:
-                                        nestedChildren.append(LiteralNode(text: nestedToken.text.prefix(1), line: nestedLine))
-                                    default:
-                                        break
-                                    }
-                                }
-                                blockChildren.append(BlockNode(code: childCode, children: nestedChildren, line: childLine))
-                            } else {
-                                // Regular code line
-                                blockChildren.append(CodeNode(code: childCode, line: childLine))
-                            }
-                            continue
-                        }
-                        
-                        // Parse non-%-line tokens
-                        switch nextToken.kind {
-                        case .literal:
-                            if !nextToken.text.isEmpty {
-                                blockChildren.append(LiteralNode(text: nextToken.text, line: childLine))
-                            }
-                        case .substitutionOpen:
-                            blockChildren.append(SubstitutionNode(expression: nextToken.text.dropFirst(2).dropLast(), line: childLine))
-                        case .gybBlockOpen:
-                            blockChildren.append(CodeNode(code: extractCodeFromBlockToken(nextToken.text), line: childLine))
-                        case .symbol:
-                            blockChildren.append(LiteralNode(text: nextToken.text.prefix(1), line: childLine))
-                        default:
-                            break
-                        }
-                    }
-                    
-                    // Create block with control code and children
-                    nodes.append(BlockNode(code: code, children: blockChildren, line: line))
-                } else {
-                    // Regular code line without block structure
-                    nodes.append(CodeNode(code: code, line: line))
-                }
+                nodes.append(CodeNode(code: code, line: line))
                 
             case .gybBlockOpen:
                 // Extract code between %{ and }%
                 nodes.append(CodeNode(code: extractCodeFromBlockToken(token.text), line: line))
                 
             case .gybBlockClose:
-                // }% - should not appear in isolation
+                // }% - should not appear in isolation (tokenizer handles it)
                 break
                 
             case .symbol:
@@ -281,4 +154,3 @@ func parseTemplate(filename: String, text: String) throws -> BlockNode {
     let nodes = try context.parseNodes()
     return BlockNode(children: nodes, line: 1)
 }
-

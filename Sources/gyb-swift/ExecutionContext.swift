@@ -1,53 +1,4 @@
 import Foundation
-import SwiftSyntax
-import SwiftParser
-
-/// Returns Swift source code representation of `value`.
-private func formatValue(_ value: Any) -> String {
-    switch value {
-    case let s as String:
-        return "\"\(s.replacingOccurrences(of: "\"", with: "\\\""))\""
-    case let i as Int:
-        return "\(i)"
-    case let d as Double:
-        return "\(d)"
-    case let b as Bool:
-        return "\(b)"
-    case let arr as [Any]:
-        let elements = arr.map { formatValue($0) }.joined(separator: ", ")
-        return "[\(elements)]"
-    default:
-        return "\(value)"
-    }
-}
-
-// MARK: - Swift Code Analysis
-
-/// Counts unmatched braces in Swift code, properly handling strings and comments.
-/// Returns positive if more opening braces, negative if more closing braces, 0 if balanced.
-private func countUnmatchedBraces(_ code: Substring) -> Int {
-    let source = Parser.parse(source: String(code))
-    
-    class BraceCounter: SyntaxVisitor {
-        var count = 0
-        
-        override func visit(_ token: TokenSyntax) -> SyntaxVisitorContinueKind {
-            switch token.tokenKind {
-            case .leftBrace:
-                count += 1
-            case .rightBrace:
-                count -= 1
-            default:
-                break
-            }
-            return .visitChildren
-        }
-    }
-    
-    let counter = BraceCounter(viewMode: .all)
-    counter.walk(source)
-    return counter.count
-}
 
 // MARK: - Errors
 
@@ -71,8 +22,15 @@ enum GYBError: Error, CustomStringConvertible {
 
 // MARK: - AST to Swift Code Conversion
 
-/// Converts an array of AST nodes to Swift code, batching literals and substitutions into multiline strings.
-func astNodesToSwiftCode(_ nodes: [ASTNode], indent: String = "", filename: String = "", lineDirective: String = "#sourceLocation(file: \"\\(file)\", line: \\(line))", emitSourceLocation: Bool = true) -> String {
+/// Converts an array of AST nodes to Swift code.
+/// Batches consecutive literals and substitutions into print statements.
+/// Code nodes are emitted directly - Swift's compiler handles the nesting.
+func astNodesToSwiftCode(
+    _ nodes: [ASTNode],
+    filename: String = "",
+    lineDirective: String = "#sourceLocation(file: \"\\(file)\", line: \\(line))",
+    emitSourceLocation: Bool = true
+) -> String {
     var result: [String] = []
     var textBatch: [String] = []  // Accumulate literal text with \() interpolations
     var textBatchLine: Int?  // Line number for pending text batch
@@ -86,24 +44,17 @@ func astNodesToSwiftCode(_ nodes: [ASTNode], indent: String = "", filename: Stri
                 let directive = lineDirective
                     .replacingOccurrences(of: "\\(file)", with: filename)
                     .replacingOccurrences(of: "\\(line)", with: "\(line)")
-                result.append(indent + directive)
+                result.append(directive)
             }
             
             // Escape """ and \ for multiline string literal
-            var content = combined
+            let content = combined
                 .replacingOccurrences(of: "\\", with: "\\\\")
                 .replacingOccurrences(of: "\"\"\"", with: "\\\"\\\"\\\"")
                 // Unescape our interpolation markers back to single backslash
                 .replacingOccurrences(of: "\\\\(", with: "\\(")
             
-            // Indent each line to match closing delimiter
-            if !indent.isEmpty {
-                content = content.split(separator: "\n", omittingEmptySubsequences: false)
-                    .map { indent + $0 }
-                    .joined(separator: "\n")
-            }
-            
-            result.append(indent + "print(\"\"\"\n\(content)\n\(indent)\"\"\", terminator: \"\")")
+            result.append("print(\"\"\"\n\(content)\n\"\"\", terminator: \"\")")
         }
         textBatch.removeAll()
         textBatchLine = nil
@@ -119,45 +70,18 @@ func astNodesToSwiftCode(_ nodes: [ASTNode], indent: String = "", filename: Stri
             // Add to text batch - will be escaped later
             textBatch.append(String(literal.text))
             
-        case let subst as SubstitutionNode:
+        case let substitution as SubstitutionNode:
             // Track line number for first node in batch
             if textBatchLine == nil {
-                textBatchLine = subst.line
+                textBatchLine = substitution.line
             }
-            // Add as interpolation - use double backslash temporarily, will be fixed in flush
-            textBatch.append("\\(\(subst.expression))")
+            // Add interpolation to text batch (with \\( to survive first escaping pass)
+            textBatch.append("\\(\(substitution.expression))")
             
         case let code as CodeNode:
-            // Flush any pending text, then emit code (no source location - may be mid-statement)
+            // Flush any pending text, then emit code directly
             flushTextBatch()
-            result.append(indent + String(code.code))
-            
-        case let block as BlockNode:
-            if let code = block.code {
-                // Flush pending text, emit control flow (no source location - may be mid-statement)
-                flushTextBatch()
-                result.append(indent + String(code))
-                result.append(astNodesToSwiftCode(block.children, indent: indent + "    ", filename: filename, lineDirective: lineDirective, emitSourceLocation: emitSourceLocation))
-                
-                // Add closing brace if code has unmatched opening braces and not provided by children
-                let braceBalance = countUnmatchedBraces(code)
-                if braceBalance > 0 {
-                    // Check if the last child is a BlockNode with net closing braces
-                    let lastChildProvidesClosing = block.children.last.flatMap { child in
-                        if let childBlock = child as? BlockNode, let childCode = childBlock.code {
-                            return countUnmatchedBraces(childCode) < 0
-                        }
-                        return false
-                    } ?? false
-                    
-                    if !lastChildProvidesClosing {
-                        result.append(indent + "}")
-                    }
-                }
-            } else {
-                // Simple sequence - process children inline
-                result.append(astNodesToSwiftCode(block.children, indent: indent, filename: filename, lineDirective: lineDirective, emitSourceLocation: emitSourceLocation))
-            }
+            result.append(String(code.code))
             
         default:
             break
@@ -166,15 +90,6 @@ func astNodesToSwiftCode(_ nodes: [ASTNode], indent: String = "", filename: Stri
     
     flushTextBatch()
     return result.filter { !$0.isEmpty }.joined(separator: "\n")
-}
-
-/// Converts an AST node to executable Swift code.
-func astNodeToSwiftCode(_ node: ASTNode, indent: String = "", filename: String = "", lineDirective: String = "#sourceLocation(file: \"\\(file)\", line: \\(line))", emitSourceLocation: Bool = true) -> String {
-    if let block = node as? BlockNode {
-        return astNodesToSwiftCode(block.children, indent: indent, filename: filename, lineDirective: lineDirective, emitSourceLocation: emitSourceLocation)
-    } else {
-        return astNodesToSwiftCode([node], indent: indent, filename: filename, lineDirective: lineDirective, emitSourceLocation: emitSourceLocation)
-    }
 }
 
 // MARK: - Template Execution
@@ -193,7 +108,12 @@ func generateSwiftCode(
         .map { "let \($0.key) = \(formatValue($0.value))" }
         .joined(separator: "\n")
     
-    let swiftCode = astNodeToSwiftCode(ast, filename: filename, lineDirective: lineDirective, emitSourceLocation: emitSourceLocation)
+    let swiftCode = astNodesToSwiftCode(
+        ast.children,
+        filename: filename,
+        lineDirective: lineDirective,
+        emitSourceLocation: emitSourceLocation
+    )
     
     return """
     import Foundation
@@ -207,86 +127,108 @@ func generateSwiftCode(
     """
 }
 
-/// Returns the generated text from executing `ast` with `bindings`.
+/// Formats a Swift value for embedding in generated code.
+private func formatValue(_ value: Any) -> String {
+    switch value {
+    case let str as String:
+        // Escape quotes and backslashes
+        let escaped = str
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        return "\"\(escaped)\""
+    case let num as Int:
+        return "\(num)"
+    case let num as Double:
+        return "\(num)"
+    case let bool as Bool:
+        return "\(bool)"
+    case let array as [Any]:
+        let elements = array.map { formatValue($0) }.joined(separator: ", ")
+        return "[\(elements)]"
+    default:
+        return "\"\(value)\""
+    }
+}
+
+/// Executes `ast` with `bindings` and returns generated output.
 func executeTemplate(
     _ ast: BlockNode,
-    filename: String = "stdin",
+    filename: String = "",
     lineDirective: String = "#sourceLocation(file: \"\\(file)\", line: \\(line))",
     bindings: [String: Any] = [:]
 ) throws -> String {
-    // Use whole-program compilation (supports control flow)
-    return try executeTemplateAsWholeProgram(ast, bindings: bindings, filename: filename, lineDirective: lineDirective)
+    return try executeTemplateAsWholeProgram(
+        ast,
+        filename: filename,
+        lineDirective: lineDirective,
+        bindings: bindings
+    )
 }
 
-/// Executes template by converting entire AST to one Swift program.
-// This approach supports control flow (% for, % if) which node-by-node can't handle.
+/// Executes template by compiling and running generated Swift code.
 private func executeTemplateAsWholeProgram(
     _ ast: BlockNode,
-    bindings: [String: Any],
-    filename: String = "",
-    lineDirective: String = "#sourceLocation(file: \"\\(file)\", line: \\(line))"
+    filename: String,
+    lineDirective: String,
+    bindings: [String: Any]
 ) throws -> String {
     // Generate complete Swift program
-    let bindingsCode = bindings
-        .filter { $0.key != "__children__" && $0.key != "__context__" }  // Filter internal bindings
-        .map { "let \($0.key) = \(formatValue($0.value))" }
-        .joined(separator: "\n")
+    let swiftCode = try generateSwiftCode(
+        ast,
+        bindings: bindings,
+        filename: filename,
+        lineDirective: lineDirective,
+        emitSourceLocation: false  // Don't emit line directives for execution
+    )
     
-    let swiftCode = astNodeToSwiftCode(ast, filename: filename, lineDirective: lineDirective, emitSourceLocation: !filename.isEmpty)
-    
-    let source = """
-    import Foundation
-    
-    // Bindings
-    \(bindingsCode)
-    
-    // Generated code
-    \(swiftCode)
-    
-    """
-    
-    // Compile and execute
+    // Write to temporary file
     let tempDir = FileManager.default.temporaryDirectory
-        .appendingPathComponent(UUID().uuidString)
-    try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+    let sourceFile = tempDir.appendingPathComponent("gyb_\(UUID().uuidString).swift")
+    let executableFile = tempDir.appendingPathComponent("gyb_\(UUID().uuidString)")
     
     defer {
-        try? FileManager.default.removeItem(at: tempDir)
+        try? FileManager.default.removeItem(at: sourceFile)
+        try? FileManager.default.removeItem(at: executableFile)
     }
     
-    let sourceFile = tempDir.appendingPathComponent("main.swift")
-    try source.write(to: sourceFile, atomically: true, encoding: .utf8)
+    try swiftCode.write(to: sourceFile, atomically: true, encoding: .utf8)
     
     // Compile
-    let outputFile = tempDir.appendingPathComponent("program")
     let compileProcess = Process()
     compileProcess.executableURL = URL(fileURLWithPath: "/usr/bin/swiftc")
-    compileProcess.arguments = [sourceFile.path, "-o", outputFile.path]
+    compileProcess.arguments = ["-o", executableFile.path, sourceFile.path]
     
-    let errorPipe = Pipe()
-    compileProcess.standardError = errorPipe
+    let compileErrorPipe = Pipe()
+    compileProcess.standardError = compileErrorPipe
+    compileProcess.standardOutput = compileErrorPipe
     
     try compileProcess.run()
     compileProcess.waitUntilExit()
     
-    guard compileProcess.terminationStatus == 0 else {
-        let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-        let errorMessage = String(data: errorData, encoding: .utf8) ?? "Unknown error"
+    if compileProcess.terminationStatus != 0 {
+        let errorData = compileErrorPipe.fileHandleForReading.readDataToEndOfFile()
+        let errorMessage = String(data: errorData, encoding: .utf8) ?? "Unknown compilation error"
         throw GYBError.compilationFailed(errorMessage)
     }
     
     // Execute
     let runProcess = Process()
-    runProcess.executableURL = outputFile
+    runProcess.executableURL = executableFile
     
     let outputPipe = Pipe()
+    let errorPipe = Pipe()
     runProcess.standardOutput = outputPipe
+    runProcess.standardError = errorPipe
     
     try runProcess.run()
     runProcess.waitUntilExit()
     
-    // Capture output
+    if runProcess.terminationStatus != 0 {
+        let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+        let errorMessage = String(data: errorData, encoding: .utf8) ?? "Unknown execution error"
+        throw GYBError.executionFailed(errorMessage)
+    }
+    
     let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
     return String(data: outputData, encoding: .utf8) ?? ""
 }
-
