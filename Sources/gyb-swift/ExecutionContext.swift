@@ -1,4 +1,6 @@
 import Foundation
+import SwiftSyntax
+import SwiftParser
 
 /// Returns Swift source code representation of `value`.
 private func formatValue(_ value: Any) -> String {
@@ -17,6 +19,34 @@ private func formatValue(_ value: Any) -> String {
     default:
         return "\(value)"
     }
+}
+
+// MARK: - Swift Code Analysis
+
+/// Counts unmatched braces in Swift code, properly handling strings and comments.
+/// Returns positive if more opening braces, negative if more closing braces, 0 if balanced.
+private func countUnmatchedBraces(_ code: Substring) -> Int {
+    let source = Parser.parse(source: String(code))
+    
+    class BraceCounter: SyntaxVisitor {
+        var count = 0
+        
+        override func visit(_ token: TokenSyntax) -> SyntaxVisitorContinueKind {
+            switch token.tokenKind {
+            case .leftBrace:
+                count += 1
+            case .rightBrace:
+                count -= 1
+            default:
+                break
+            }
+            return .visitChildren
+        }
+    }
+    
+    let counter = BraceCounter(viewMode: .all)
+    counter.walk(source)
+    return counter.count
 }
 
 // MARK: - Errors
@@ -109,13 +139,15 @@ func astNodesToSwiftCode(_ nodes: [ASTNode], indent: String = "", filename: Stri
                 result.append(indent + String(code))
                 result.append(astNodesToSwiftCode(block.children, indent: indent + "    ", filename: filename, lineDirective: lineDirective, emitSourceLocation: emitSourceLocation))
                 
-                // Add closing brace if code has unmatched { and not provided by children
-                let openBraces = code.filter { $0 == "{" }.count
-                let closeBraces = code.filter { $0 == "}" }.count
-                if openBraces > closeBraces {
-                    // Check if the last child is a BlockNode with code starting with }
+                // Add closing brace if code has unmatched opening braces and not provided by children
+                let braceBalance = countUnmatchedBraces(code)
+                if braceBalance > 0 {
+                    // Check if the last child is a BlockNode with net closing braces
                     let lastChildProvidesClosing = block.children.last.flatMap { child in
-                        (child as? BlockNode)?.code?.trimmingCharacters(in: .whitespaces).hasPrefix("}")
+                        if let childBlock = child as? BlockNode, let childCode = childBlock.code {
+                            return countUnmatchedBraces(childCode) < 0
+                        }
+                        return false
                     } ?? false
                     
                     if !lastChildProvidesClosing {

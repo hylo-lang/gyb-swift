@@ -1,4 +1,6 @@
 import Foundation
+import SwiftSyntax
+import SwiftParser
 
 // MARK: - AST Node Protocol
 
@@ -69,6 +71,32 @@ struct BlockNode: ASTNode {
 
 // MARK: - Helper Functions
 
+/// Counts unmatched braces in Swift code, properly handling strings and comments.
+/// Returns positive if more opening braces, negative if more closing braces, 0 if balanced.
+private func countUnmatchedBraces(_ code: Substring) -> Int {
+    let source = Parser.parse(source: String(code))
+    
+    class BraceCounter: SyntaxVisitor {
+        var count = 0
+        
+        override func visit(_ token: TokenSyntax) -> SyntaxVisitorContinueKind {
+            switch token.tokenKind {
+            case .leftBrace:
+                count += 1
+            case .rightBrace:
+                count -= 1
+            default:
+                break
+            }
+            return .visitChildren
+        }
+    }
+    
+    let counter = BraceCounter(viewMode: .all)
+    counter.walk(source)
+    return counter.count
+}
+
 /// Extracts code content from a gybBlockOpen token (%{...}%).
 /// Removes the %{ prefix, }% suffix, and optional trailing newline.
 private func extractCodeFromBlockToken(_ token: Substring) -> Substring {
@@ -130,11 +158,10 @@ struct ParseContext {
                 // Parse %-lines
                 let code = extractCodeFromLines(token.text)
                 
-                // Check if this line has an unmatched opening brace
-                let openBraces = code.filter { $0 == "{" }.count
-                let closeBraces = code.filter { $0 == "}" }.count
+                // Check if this line has unmatched braces using SwiftSyntax
+                let braceBalance = countUnmatchedBraces(code)
                 
-                if openBraces > closeBraces {
+                if braceBalance > 0 {
                     // This line opens a block - collect children until we see a %-line that closes it
                     var blockChildren: [ASTNode] = []
                     
@@ -146,18 +173,17 @@ struct ParseContext {
                         // Check if this is a %-line that closes the block (has unmatched closing braces)
                         if nextToken.kind == .gybLines {
                             let childCode = extractCodeFromLines(nextToken.text)
-                            let childOpenBraces = childCode.filter { $0 == "{" }.count
-                            let childCloseBraces = childCode.filter { $0 == "}" }.count
+                            let childBraceBalance = countUnmatchedBraces(childCode)
                             
-                            // If this line closes more than it opens, it closes our block
-                            if childCloseBraces > childOpenBraces {
+                            // If this line has net closing braces, it closes our block
+                            if childBraceBalance < 0 {
                                 // This line closes the block - add it as a child block node
                                 blockChildren.append(BlockNode(code: childCode, children: [], line: childLine))
                                 break
                             }
                             
                             // Check if this nested line opens its own block
-                            if childOpenBraces > childCloseBraces {
+                            if childBraceBalance > 0 {
                                 // Nested block - recursively collect its children
                                 var nestedChildren: [ASTNode] = []
                                 while let nestedToken = tokenIterator.next() {
@@ -167,9 +193,8 @@ struct ParseContext {
                                     // Check for closing %-line
                                     if nestedToken.kind == .gybLines {
                                         let nestedCode = extractCodeFromLines(nestedToken.text)
-                                        let nestedOpen = nestedCode.filter { $0 == "{" }.count
-                                        let nestedClose = nestedCode.filter { $0 == "}" }.count
-                                        if nestedClose > nestedOpen {
+                                        let nestedBraceBalance = countUnmatchedBraces(nestedCode)
+                                        if nestedBraceBalance < 0 {
                                             nestedChildren.append(BlockNode(code: nestedCode, children: [], line: nestedLine))
                                             break
                                         }
