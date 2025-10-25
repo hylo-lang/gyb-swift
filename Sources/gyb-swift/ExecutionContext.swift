@@ -27,20 +27,25 @@ enum GYBError: Error, CustomStringConvertible {
 /// Code nodes are emitted directly - Swift's compiler handles the nesting.
 func astNodesToSwiftCode(
     _ nodes: [ASTNode],
+    templateText: String = "",
     filename: String = "",
     lineDirective: String = "#sourceLocation(file: \"\\(file)\", line: \\(line))",
     emitSourceLocation: Bool = true
 ) -> String {
     var result: [String] = []
     var textBatch: [String] = []  // Accumulate literal text with \() interpolations
-    var textBatchLine: Int?  // Line number for pending text batch
+    var textBatchIndex: String.Index?  // Start index of first node in batch
+    
+    // Pre-compute line starts for line number extraction
+    let lineStarts = !templateText.isEmpty ? getLineStarts(templateText) : []
     
     func flushTextBatch() {
         guard !textBatch.isEmpty else { return }
         let combined = textBatch.joined()
         if !combined.isEmpty {
             // Emit source location before the print statement
-            if emitSourceLocation, let line = textBatchLine, !filename.isEmpty {
+            if emitSourceLocation, !filename.isEmpty, let index = textBatchIndex {
+                let line = getLineNumber(for: index, in: templateText, lineStarts: lineStarts)
                 let directive = lineDirective
                     .replacingOccurrences(of: "\\(file)", with: filename)
                     .replacingOccurrences(of: "\\(line)", with: "\(line)")
@@ -57,23 +62,23 @@ func astNodesToSwiftCode(
             result.append("print(\"\"\"\n\(content)\n\"\"\", terminator: \"\")")
         }
         textBatch.removeAll()
-        textBatchLine = nil
+        textBatchIndex = nil
     }
     
     for node in nodes {
         switch node {
         case let literal as LiteralNode:
-            // Track line number for first node in batch
-            if textBatchLine == nil {
-                textBatchLine = literal.line
+            // Track start index for first node in batch
+            if textBatchIndex == nil {
+                textBatchIndex = literal.text.startIndex
             }
             // Add to text batch - will be escaped later
             textBatch.append(String(literal.text))
             
         case let substitution as SubstitutionNode:
-            // Track line number for first node in batch
-            if textBatchLine == nil {
-                textBatchLine = substitution.line
+            // Track start index for first node in batch
+            if textBatchIndex == nil {
+                textBatchIndex = substitution.expression.startIndex
             }
             // Add interpolation to text batch (with \\( to survive first escaping pass)
             textBatch.append("\\(\(substitution.expression))")
@@ -97,6 +102,7 @@ func astNodesToSwiftCode(
 /// Returns the generated Swift source code for `ast` with `bindings` (without executing).
 func generateSwiftCode(
     _ ast: BlockNode,
+    templateText: String,
     bindings: [String: Any] = [:],
     filename: String = "",
     lineDirective: String = "#sourceLocation(file: \"\\(file)\", line: \\(line))",
@@ -110,6 +116,7 @@ func generateSwiftCode(
     
     let swiftCode = astNodesToSwiftCode(
         ast.children,
+        templateText: templateText,
         filename: filename,
         lineDirective: lineDirective,
         emitSourceLocation: emitSourceLocation
@@ -153,12 +160,14 @@ private func formatValue(_ value: Any) -> String {
 /// Executes `ast` with `bindings` and returns generated output.
 func executeTemplate(
     _ ast: BlockNode,
+    templateText: String,
     filename: String = "",
     lineDirective: String = "#sourceLocation(file: \"\\(file)\", line: \\(line))",
     bindings: [String: Any] = [:]
 ) throws -> String {
     return try executeTemplateAsWholeProgram(
         ast,
+        templateText: templateText,
         filename: filename,
         lineDirective: lineDirective,
         bindings: bindings
@@ -168,6 +177,7 @@ func executeTemplate(
 /// Executes template by compiling and running generated Swift code.
 private func executeTemplateAsWholeProgram(
     _ ast: BlockNode,
+    templateText text: String,
     filename: String,
     lineDirective: String,
     bindings: [String: Any]
@@ -175,6 +185,7 @@ private func executeTemplateAsWholeProgram(
     // Generate complete Swift program
     let swiftCode = try generateSwiftCode(
         ast,
+        templateText: text,
         bindings: bindings,
         filename: filename,
         lineDirective: lineDirective,

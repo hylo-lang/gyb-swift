@@ -131,7 +131,7 @@ struct GYBSwift: ParsableCommand {
         
         // Dump generated Swift code if requested
         if dumpCode {
-            let code = try generateSwiftCode(ast, bindings: bindings, filename: filename, lineDirective: lineDirective, emitSourceLocation: true)
+            let code = try generateSwiftCode(ast, templateText: templateText, bindings: bindings, filename: filename, lineDirective: lineDirective, emitSourceLocation: true)
             print(code)
             return
         }
@@ -145,6 +145,7 @@ struct GYBSwift: ParsableCommand {
         // Execute template
         let result = try executeTemplate(
             ast,
+            templateText: templateText,
             filename: filename,
             lineDirective: lineDirective,
             bindings: bindings

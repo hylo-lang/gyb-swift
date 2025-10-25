@@ -367,7 +367,7 @@ func parse_codeBlock() throws {
 func execute_literalTemplate() throws {
     let text = "Hello, World!"
     let ast = try parseTemplate(filename: "test", text: text)
-    let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
+    let result = try executeTemplate(ast, templateText: text, filename: "test", lineDirective: "", bindings: [:])
     
     #expect(result == "Hello, World!")
 }
@@ -376,7 +376,7 @@ func execute_literalTemplate() throws {
 func execute_templateWithEscapedSymbols() throws {
     let text = "Price: $$50"
     let ast = try parseTemplate(filename: "test", text: text)
-    let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
+    let result = try executeTemplate(ast, templateText: text, filename: "test", lineDirective: "", bindings: [:])
     
     #expect(result == "Price: $50")
 }
@@ -385,7 +385,7 @@ func execute_templateWithEscapedSymbols() throws {
 func substitution_withSimpleBinding() throws {
     let text = "x = ${x}"
     let ast = try parseTemplate(filename: "test", text: text)
-    let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: ["x": 42])
+    let result = try executeTemplate(ast, templateText: text, filename: "test", lineDirective: "", bindings: ["x": 42])
     #expect(result == "x = 42")
 }
 
@@ -393,7 +393,7 @@ func substitution_withSimpleBinding() throws {
 func execute_emptyTemplate() throws {
     let text = ""
     let ast = try parseTemplate(filename: "test", text: text)
-    let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
+    let result = try executeTemplate(ast, templateText: text, filename: "test", lineDirective: "", bindings: [:])
     
     #expect(result == "")
 }
@@ -402,7 +402,7 @@ func execute_emptyTemplate() throws {
 func execute_whitespaceOnly() throws {
     let text = "   \n\t\n   "
     let ast = try parseTemplate(filename: "test", text: text)
-    let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
+    let result = try executeTemplate(ast, templateText: text, filename: "test", lineDirective: "", bindings: [:])
     
     #expect(result == text)
 }
@@ -411,7 +411,7 @@ func execute_whitespaceOnly() throws {
 func execute_mixedLiteralsAndSymbols() throws {
     let text = "Regular $$text with %%symbols"
     let ast = try parseTemplate(filename: "test", text: text)
-    let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
+    let result = try executeTemplate(ast, templateText: text, filename: "test", lineDirective: "", bindings: [:])
     
     #expect(result == "Regular $text with %symbols")
 }
@@ -423,7 +423,7 @@ func parse_malformedSubstitution() {
     // Should handle gracefully - either parse as literal or throw clear error
     do {
         let ast = try parseTemplate(filename: "test", text: text)
-        _ = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
+        _ = try executeTemplate(ast, templateText: text, filename: "test", lineDirective: "", bindings: [:])
     } catch {
         // Error is expected for malformed input
     }
@@ -433,7 +433,7 @@ func parse_malformedSubstitution() {
 func execute_multipleLiterals() throws {
     let text = "First line\nSecond line\nThird line"
     let ast = try parseTemplate(filename: "test", text: text)
-    let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
+    let result = try executeTemplate(ast, templateText: text, filename: "test", lineDirective: "", bindings: [:])
     
     #expect(result == text)
 }
@@ -462,6 +462,7 @@ func execute_lineDirectives() throws {
     // Test with custom line directive format
     let code = try generateSwiftCode(
         ast,
+        templateText: text,
         bindings: [:],
         filename: "test.gyb",
         lineDirective: "//# line \\(line) \"\\(file)\"",
@@ -488,6 +489,7 @@ Line 2
     // Test execution produces exact expected output
     let result = try executeTemplate(
         ast,
+        templateText: text,
         filename: "test.gyb",
         lineDirective: "//# line \\(line) \"\\(file)\"",
         bindings: [:]
@@ -510,16 +512,16 @@ func components_instantiation() {
 
 @Test("AST node creation")
 func astNode_creation() {
-    let literal = LiteralNode(text: "hello", line: 1)
+    let literal = LiteralNode(text: "hello")
     #expect(literal.text == "hello")
     
-    let code = CodeNode(code: "let x = 1", line: 1)
+    let code = CodeNode(code: "let x = 1")
     #expect(code.code == "let x = 1")
     
-    let subst = SubstitutionNode(expression: "x", line: 1)
+    let subst = SubstitutionNode(expression: "x")
     #expect(subst.expression == "x")
     
-    let block = BlockNode(children: [literal], line: 1)
+    let block = BlockNode(children: [literal])
     #expect(block.children.count == 1)
 }
 
@@ -537,6 +539,7 @@ func integration_realisticTemplate() throws {
     let ast = try parseTemplate(filename: "test.gyb", text: text)
     let result = try executeTemplate(
         ast,
+        templateText: text,
         filename: "test.gyb",
         lineDirective: "",
         bindings: ["count": 42]
@@ -563,6 +566,7 @@ ${i}
     let ast = try parseTemplate(filename: "test.gyb", text: text)
     let result = try executeTemplate(
         ast,
+        templateText: text,
         filename: "test.gyb",
         lineDirective: "",
         bindings: [:]
@@ -587,7 +591,7 @@ large
 """
     
     let ast = try parseTemplate(filename: "test", text: text)
-    let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
+    let result = try executeTemplate(ast, templateText: text, filename: "test", lineDirective: "", bindings: [:])
     
     #expect(result == "large\n")
 }
@@ -603,7 +607,7 @@ func execute_nestedControlFlow() throws {
 """
     
     let ast = try parseTemplate(filename: "test", text: text)
-    let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
+    let result = try executeTemplate(ast, templateText: text, filename: "test", lineDirective: "", bindings: [:])
     
     let expected = """
 (1,1)
@@ -626,7 +630,7 @@ func integration_templateStructurePreservation() throws {
     """
     
     let ast = try parseTemplate(filename: "test", text: text)
-    let result = try executeTemplate(ast, filename: "test", lineDirective: "", bindings: [:])
+    let result = try executeTemplate(ast, templateText: text, filename: "test", lineDirective: "", bindings: [:])
     
     #expect(result == text)
 }
@@ -650,6 +654,7 @@ THIS SHOULD NOT APPEAR IN THE OUTPUT
     let ast = try parseTemplate(filename: "test.gyb", text: text)
     let code = try generateSwiftCode(
         ast,
+        templateText: text,
         bindings: ["x": 1],
         filename: "test.gyb",
         lineDirective: "//# line \\(line) \"\\(file)\"",
@@ -691,6 +696,7 @@ THIS SHOULD NOT APPEAR IN THE OUTPUT
     // Verify execution produces correct output
     let result = try executeTemplate(
         ast,
+        templateText: text,
         filename: "test.gyb",
         lineDirective: "//# line \\(line) \"\\(file)\"",
         bindings: ["x": 1]
@@ -720,6 +726,7 @@ ${a}
     let ast = try parseTemplate(filename: "test.gyb", text: text)
     let code = try generateSwiftCode(
         ast,
+        templateText: text,
         bindings: [:],
         filename: "test.gyb",
         lineDirective: "//# line \\(line) \"\\(file)\"",
@@ -754,6 +761,7 @@ print(\"\"\"
     // Verify execution
     let result = try executeTemplate(
         ast,
+        templateText: text,
         filename: "test.gyb",
         lineDirective: "//# line \\(line) \"\\(file)\"",
         bindings: [:]
@@ -774,6 +782,7 @@ ${120 +
     let ast = try parseTemplate(filename: "test.gyb", text: text)
     let result = try executeTemplate(
         ast,
+        templateText: text,
         filename: "test.gyb",
         lineDirective: "",
         bindings: [:]
@@ -795,6 +804,7 @@ z
     let ast = try parseTemplate(filename: "test.gyb", text: text)
     let result = try executeTemplate(
         ast,
+        templateText: text,
         filename: "test.gyb",
         lineDirective: "",
         bindings: [:]
@@ -825,6 +835,7 @@ z
     let ast = try parseTemplate(filename: "test.gyb", text: text)
     let code = try generateSwiftCode(
         ast,
+        templateText: text,
         bindings: ["x": "2"],
         filename: "test.gyb",
         lineDirective: "//# line \\(line) \"\\(file)\"",
@@ -867,6 +878,7 @@ z
     // Verify execution produces correct output
     let result = try executeTemplate(
         ast,
+        templateText: text,
         filename: "test.gyb",
         lineDirective: "//# line \\(line) \"\\(file)\"",
         bindings: ["x": "2"]
@@ -900,6 +912,7 @@ ${a}
     let ast = try parseTemplate(filename: "test.gyb", text: text)
     let code = try generateSwiftCode(
         ast,
+        templateText: text,
         bindings: [:],
         filename: "test.gyb",
         lineDirective: "#line \\(line) \"\\(file)\"",

@@ -10,7 +10,6 @@ protocol ASTNode: CustomStringConvertible {}
 /// Literal text from the template.
 struct LiteralNode: ASTNode {
     let text: Substring
-    let line: Int
     
     var description: String {
         "Literal: \(text.prefix(20))\(text.dropFirst(20).isEmpty ? "" : "...")"
@@ -22,7 +21,6 @@ struct LiteralNode: ASTNode {
 /// Swift code to be executed (from %-lines or %{...}% blocks).
 struct CodeNode: ASTNode {
     let code: Substring
-    let line: Int
     
     var description: String {
         "Code: {\(code.prefix(30))\(code.dropFirst(30).isEmpty ? "" : "...")}"
@@ -34,7 +32,6 @@ struct CodeNode: ASTNode {
 /// A ${...} expression whose result is converted to text and inserted into the output.
 struct SubstitutionNode: ASTNode {
     let expression: Substring
-    let line: Int
     
     var description: String {
         "Substitution: ${\(expression)}"
@@ -47,11 +44,9 @@ struct SubstitutionNode: ASTNode {
 /// Note: This is just a container; nesting is handled by Swift's compiler, not by the parser.
 struct BlockNode: ASTNode {
     let children: [ASTNode]
-    let line: Int
     
-    init(children: [ASTNode], line: Int = 1) {
+    init(children: [ASTNode]) {
         self.children = children
-        self.line = line
     }
     
     var description: String {
@@ -74,26 +69,10 @@ private func extractCodeFromBlockToken(_ token: Substring) -> Substring {
 struct ParseContext {
     let filename: String
     let templateText: String
-    private(set) var position: String.Index
-    private let lineStarts: [String.Index]
     
     init(filename: String, text: String) {
         self.filename = filename
         self.templateText = text
-        self.position = text.startIndex
-        self.lineStarts = getLineStarts(text)
-    }
-    
-    /// Returns the current line number.
-    var currentLine: Int {
-        lineStarts.firstIndex { $0 > position }.map { $0 } ?? lineStarts.count
-    }
-    
-    /// Advances position to `index`.
-    mutating func advance(to index: String.Index) {
-        if index > position {
-            position = index
-        }
     }
     
     /// Returns AST nodes parsed from the template.
@@ -152,5 +131,5 @@ struct ParseContext {
 func parseTemplate(filename: String, text: String) throws -> BlockNode {
     var context = ParseContext(filename: filename, text: text)
     let nodes = try context.parseNodes()
-    return BlockNode(children: nodes, line: 1)
+    return BlockNode(children: nodes)
 }
