@@ -10,8 +10,7 @@ struct TemplateToken {
     enum Kind {
         case literal
         case substitutionOpen  // ${
-        case gybLines          // %-lines
-        case gybLinesClose     // %end
+        case gybLines          // %-lines (including % }, % } else {, etc.)
         case gybBlockOpen      // %{
         case gybBlockClose     // }%
         case symbol            // %% or $$
@@ -153,37 +152,10 @@ struct TemplateTokens {
     }
     
     /// Handles % code lines.
+    /// Swift is brace-delimited, so we treat all %-lines uniformly as code.
+    /// No special handling for % } or %end - just emit the code as-is.
     private mutating func handleCodeLine() -> TemplateToken? {
-        // Skip % and optional whitespace to check what follows
-        var afterPercent = remainingText.dropFirst()
-        while let char = afterPercent.first, char == " " || char == "\t" {
-            afterPercent = afterPercent.dropFirst()
-        }
-        
-        // Check for % } (closing brace line - Swift's equivalent to Python's %end)
-        if afterPercent.first == "}" {
-            let afterBrace = afterPercent.dropFirst()
-            if afterBrace.first?.isWhitespace == true || afterBrace.first == "#" || afterBrace.isEmpty {
-                // Consume up to and including the newline
-                let line = remainingText.prefix(while: { !$0.isNewline })
-                let afterLine = remainingText.dropFirst(line.count)
-                remainingText = afterLine.isEmpty ? afterLine : afterLine.dropFirst()
-                return TemplateToken(kind: .gybLinesClose, text: "% }")
-            }
-        }
-        
-        // Also support %end for compatibility with Python templates
-        if afterPercent.starts(with: "end") {
-            let afterEnd = afterPercent.dropFirst(3)
-            if afterEnd.first?.isWhitespace == true || afterEnd.first == "#" || afterEnd.isEmpty {
-                let line = remainingText.prefix(while: { !$0.isNewline })
-                let afterLine = remainingText.dropFirst(line.count)
-                remainingText = afterLine.isEmpty ? afterLine : afterLine.dropFirst()
-                return TemplateToken(kind: .gybLinesClose, text: "%end")
-            }
-        }
-        
-        // Regular code line - read to end of line
+        // Read entire line as code
         let line = remainingText.prefix(while: { !$0.isNewline })
         let afterLine = remainingText.dropFirst(line.count)
         remainingText = afterLine.isEmpty ? afterLine : afterLine.dropFirst()

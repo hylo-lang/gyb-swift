@@ -109,11 +109,18 @@ func astNodesToSwiftCode(_ nodes: [ASTNode], indent: String = "", filename: Stri
                 result.append(indent + String(code))
                 result.append(astNodesToSwiftCode(block.children, indent: indent + "    ", filename: filename, lineDirective: lineDirective, emitSourceLocation: emitSourceLocation))
                 
-                // Add closing brace if code has unmatched {
+                // Add closing brace if code has unmatched { and not provided by children
                 let openBraces = code.filter { $0 == "{" }.count
                 let closeBraces = code.filter { $0 == "}" }.count
                 if openBraces > closeBraces {
-                    result.append(indent + "}")
+                    // Check if the last child is a BlockNode with code starting with }
+                    let lastChildProvidesClosing = block.children.last.flatMap { child in
+                        (child as? BlockNode)?.code?.trimmingCharacters(in: .whitespaces).hasPrefix("}")
+                    } ?? false
+                    
+                    if !lastChildProvidesClosing {
+                        result.append(indent + "}")
+                    }
                 }
             } else {
                 // Simple sequence - process children inline

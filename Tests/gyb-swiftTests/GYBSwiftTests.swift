@@ -276,35 +276,34 @@ func tokenize_codeLines() {
 // MARK: - Python Doctest Translations
 
 @Test("tokenize template with %for/%end")
-// Python doctest: '%for x in range(10):\n%  print x\n%end\njuicebox'
-// Note: Swift doesn't batch consecutive %-lines like Python does
+// Swift-style loop with closing brace
 func tokenize_pythonDoctest1() {
-    let text = "%for x in range(10):\n%  print x\n%end\njuicebox"
+    let text = "% for x in 0..<10 {\n%  print(x)\n% }\njuicebox"
     var tokenizer = TemplateTokens(text: text)
     var tokens: [TemplateToken] = []
     while let token = tokenizer.next() {
         tokens.append(token)
     }
     
-    // Swift tokenizes each %-line separately (unlike Python which batches them)
-    #expect(tokens.contains { $0.kind == .gybLines && $0.text.contains("%for") })
+    // Swift tokenizes each %-line separately
+    #expect(tokens.contains { $0.kind == .gybLines && $0.text.contains("% for") })
     #expect(tokens.contains { $0.kind == .gybLines && $0.text.contains("print") })
-    #expect(tokens.contains { $0.kind == .gybLinesClose })
+    #expect(tokens.contains { $0.kind == .gybLines && $0.text.contains("% }") })
     #expect(tokens.contains { $0.kind == .literal && $0.text == "juicebox" })
 }
 
 @Test("tokenize template with mixed % and ${}")
-// Python doctest: 'Nothing\n% if x:\n%    for i in range(3):\n${i}\n%    end\n% else:\nTHIS SHOULD NOT APPEAR IN THE OUTPUT\n'
-// Note: Swift doesn't batch consecutive %-lines like Python does
+// Swift-style template with control flow
 func tokenize_pythonDoctest2() {
     let text = """
 Nothing
-% if x:
-%    for i in range(3):
+% if x != 0 {
+%    for i in 0..<3 {
 ${i}
-%    end
-% else:
+%    }
+% } else {
 THIS SHOULD NOT APPEAR IN THE OUTPUT
+% }
 
 """
     var tokenizer = TemplateTokens(text: text)
@@ -315,24 +314,25 @@ THIS SHOULD NOT APPEAR IN THE OUTPUT
     
     // Verify all expected token types are present
     #expect(tokens.contains { $0.kind == .literal && $0.text.contains("Nothing") })
-    #expect(tokens.contains { $0.kind == .gybLines && $0.text.contains("% if x:") })
+    #expect(tokens.contains { $0.kind == .gybLines && $0.text.contains("% if") })
     #expect(tokens.contains { $0.kind == .gybLines && $0.text.contains("%    for i") })
     #expect(tokens.contains { $0.kind == .substitutionOpen })
-    #expect(tokens.contains { $0.kind == .gybLinesClose })
-    #expect(tokens.contains { $0.kind == .gybLines && $0.text.contains("% else:") })
+    #expect(tokens.contains { $0.kind == .gybLines && $0.text.contains("%    }") })
+    #expect(tokens.contains { $0.kind == .gybLines && $0.text.contains("% } else") })
     #expect(tokens.contains { $0.kind == .literal && $0.text.contains("THIS SHOULD NOT APPEAR") })
 }
 
 @Test("tokenize complex template with all constructs")
-// Simplified version focusing on key constructs that work
+// Swift-style template with all token types
 func tokenize_pythonDoctest3() {
     let text = """
 This is literal stuff ${x}
-%{ code }%
+%{ let code = 1 }%
 and %-lines:
-% x = 1
-% end
+% let x = 1
+% for i in 0..<1 {
 %% literal percent
+% }
 
 """
     var tokenizer = TemplateTokens(text: text)
@@ -345,8 +345,10 @@ and %-lines:
     #expect(tokens.contains { $0.kind == .literal })
     #expect(tokens.contains { $0.kind == .substitutionOpen })
     #expect(tokens.contains { $0.kind == .gybBlockOpen })
-    #expect(tokens.contains { $0.kind == .gybLines })
-    #expect(tokens.contains { $0.kind == .gybLinesClose })
+    #expect(tokens.contains { $0.kind == .gybLines && $0.text.contains("% let") })
+    #expect(tokens.contains { $0.kind == .gybLines && $0.text.contains("% for") })
+    #expect(tokens.contains { $0.kind == .symbol && $0.text == "%%" })
+    #expect(tokens.contains { $0.kind == .gybLines && $0.text.contains("% }") })
 }
 
 // MARK: - Parse Tests
@@ -637,5 +639,211 @@ func integration_templateStructurePreservation() throws {
     #expect(result.contains("Header"))
     #expect(result.contains("Body content"))
     #expect(result.contains("Footer"))
+}
+
+// MARK: - Python Doctest Equivalence Tests
+
+@Test("line directive for each loop iteration")
+// Python doctest: execute_template with loop that outputs multiple times
+func lineDirective_loopIterations() throws {
+    let text = """
+Nothing
+% if x != 0 {
+%    for i in 0..<3 {
+${i}
+%    }
+% } else {
+THIS SHOULD NOT APPEAR IN THE OUTPUT
+% }
+"""
+    
+    let ast = try parseTemplate(filename: "test.gyb", text: text)
+    let code = try generateSwiftCode(
+        ast,
+        bindings: ["x": 1],
+        filename: "test.gyb",
+        lineDirective: "//# line \\(line) \"\\(file)\"",
+        emitSourceLocation: true
+    )
+    
+    // With our batching approach for cleaner output, loop iterations on the same
+    // source line get one line directive for the batch, not one per iteration
+    #expect(code.contains("//# line 4 \"test.gyb\""), "Expected line directive for loop content")
+    
+    // Verify execution produces correct output
+    let result = try executeTemplate(
+        ast,
+        filename: "test.gyb",
+        lineDirective: "//# line \\(line) \"\\(file)\"",
+        bindings: ["x": 1]
+    )
+    #expect(result.contains("Nothing"))
+    #expect(result.contains("0"))
+    #expect(result.contains("1"))
+    #expect(result.contains("2"))
+    #expect(!result.contains("SHOULD NOT APPEAR"))
+}
+
+@Test("line directive after code-only lines")
+// Python doctest: execute_template with code-only %-lines followed by substitution
+func lineDirective_afterCodeOnlyLines() throws {
+    let text = """
+Nothing
+% var a: [Int] = []
+% for x in 0..<3 {
+%    a.append(x)
+% }
+${a}
+"""
+    
+    let ast = try parseTemplate(filename: "test.gyb", text: text)
+    let code = try generateSwiftCode(
+        ast,
+        bindings: [:],
+        filename: "test.gyb",
+        lineDirective: "//# line \\(line) \"\\(file)\"",
+        emitSourceLocation: true
+    )
+    
+    // Should have line directive for line 1 (Nothing) and line 6 (substitution)
+    #expect(code.contains("//# line 1 \"test.gyb\""))
+    #expect(code.contains("//# line 6 \"test.gyb\""))
+    
+    // Verify execution
+    let result = try executeTemplate(
+        ast,
+        filename: "test.gyb",
+        lineDirective: "//# line \\(line) \"\\(file)\"",
+        bindings: [:]
+    )
+    #expect(result.contains("Nothing"))
+    #expect(result.contains("[0, 1, 2]"))
+}
+
+@Test("multiline substitution expression")
+// Python doctest: expand() with ${120 + \n    3}
+func substitution_multiline() throws {
+    let text = """
+${120 +
+
+   3}
+"""
+    
+    let ast = try parseTemplate(filename: "test.gyb", text: text)
+    let result = try executeTemplate(
+        ast,
+        filename: "test.gyb",
+        lineDirective: "",
+        bindings: [:]
+    )
+    
+    #expect(result.contains("123"))
+}
+
+@Test("substitution with embedded newlines in result")
+// Python doctest: expand() with ${"w\nx\nX\ny"}
+func substitution_embeddedNewlines() throws {
+    let text = """
+abc
+${\"w\\nx\\nX\\ny\"}
+z
+"""
+    
+    let ast = try parseTemplate(filename: "test.gyb", text: text)
+    let result = try executeTemplate(
+        ast,
+        filename: "test.gyb",
+        lineDirective: "",
+        bindings: [:]
+    )
+    
+    #expect(result.contains("abc"))
+    #expect(result.contains("w"))
+    #expect(result.contains("x"))
+    #expect(result.contains("X"))
+    #expect(result.contains("y"))
+    #expect(result.contains("z"))
+}
+
+@Test("comprehensive integration test matching Python expand() doctest")
+// Python doctest: expand() comprehensive test
+// Note: We emit line directives at logical boundaries (per print statement) for cleaner output
+func integration_comprehensiveExpandTest() throws {
+    let text = """
+---
+% for i in 0..<Int(x)! {
+a pox on ${i} for epoxy
+% }
+${120 +
+
+   3}
+abc
+${\"w\\nx\\nX\\ny\"}
+z
+"""
+    
+    let ast = try parseTemplate(filename: "test.gyb", text: text)
+    let code = try generateSwiftCode(
+        ast,
+        bindings: ["x": "2"],
+        filename: "test.gyb",
+        lineDirective: "//# line \\(line) \"\\(file)\"",
+        emitSourceLocation: true
+    )
+    
+    // Verify line directives are generated at logical boundaries
+    // Line directives mark the start of each output block
+    #expect(code.contains("//# line 1 \"test.gyb\""))  // First output block (---)
+    #expect(code.contains("//# line 3 \"test.gyb\""))  // Loop body output (a pox on...)
+    #expect(code.contains("//# line 5 \"test.gyb\""))  // Multiline substitution
+    // Additional line directives may be present for other output blocks
+    
+    // Verify execution produces correct output
+    let result = try executeTemplate(
+        ast,
+        filename: "test.gyb",
+        lineDirective: "//# line \\(line) \"\\(file)\"",
+        bindings: ["x": "2"]
+    )
+    
+    #expect(result.contains("---"))
+    #expect(result.contains("a pox on 0 for epoxy"))
+    #expect(result.contains("a pox on 1 for epoxy"))
+    #expect(result.contains("123"))
+    #expect(result.contains("abc"))
+    #expect(result.contains("w"))
+    #expect(result.contains("x"))
+    #expect(result.contains("X"))
+    #expect(result.contains("y"))
+    #expect(result.contains("z"))
+}
+
+@Test("alternative line directive format")
+// Python doctest: execute_template with '#line %(line)d "%(file)s"' format
+func lineDirective_alternativeFormat() throws {
+    let text = """
+Nothing
+% var a: [Int] = []
+% for x in 0..<3 {
+%    a.append(x)
+% }
+${a}
+"""
+    
+    let ast = try parseTemplate(filename: "test.gyb", text: text)
+    let code = try generateSwiftCode(
+        ast,
+        bindings: [:],
+        filename: "test.gyb",
+        lineDirective: "#line \\(line) \"\\(file)\"",
+        emitSourceLocation: true
+    )
+    
+    // Should use the custom format
+    #expect(code.contains("#line 1 \"test.gyb\""))
+    #expect(code.contains("#line 6 \"test.gyb\""))
+    
+    // Verify it doesn't contain the default format
+    #expect(!code.contains("#sourceLocation"))
 }
 
