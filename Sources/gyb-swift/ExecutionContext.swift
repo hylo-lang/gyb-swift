@@ -23,27 +23,212 @@ enum GYBError: Error, CustomStringConvertible {
 
 // MARK: - AST to Swift Code Conversion
 
-/// Returns the start position of `nodes`'s first element.
-private func sourceLocationIndex(for nodes: [ASTNode]) -> String.Index {
-    let first = nodes.first!
+/// Generates Swift code from AST nodes with consistent configuration.
+struct CodeGenerator {
+    let templateText: String
+    let filename: String
+    let lineDirective: String
+    let emitSourceLocation: Bool
 
-    if let literal = first as? LiteralNode {
-        return literal.text.startIndex
-    } else if let substitution = first as? SubstitutionNode {
-        return substitution.expression.startIndex
+    private let lineStarts: [String.Index]
+
+    init(
+        templateText: String,
+        filename: String = "",
+        lineDirective: String = "#sourceLocation(file: \"\\(file)\", line: \\(line))",
+        emitSourceLocation: Bool = true
+    ) {
+        self.templateText = templateText
+        self.filename = filename
+        self.lineDirective = lineDirective
+        self.emitSourceLocation = emitSourceLocation
+        self.lineStarts = getLineStarts(templateText)
     }
-    fatalError("Unexpected node type: \(type(of: first))")
-}
 
-/// Returns `nodes`'s text content as strings, with substitutions formatted as `\(expression)`.
-private func textContent(from nodes: [ASTNode]) -> [String] {
-    return nodes.map { node in
-        if let literal = node as? LiteralNode {
-            return String(literal.text)
-        } else if let substitution = node as? SubstitutionNode {
-            return "\\(\(substitution.expression))"
+    /// Returns Swift code executing `nodes`, batching consecutive output nodes into print statements.
+    func generateCode(for nodes: [ASTNode]) -> String {
+        // Group consecutive output nodes together; keep code nodes separate
+        let chunks = nodes.chunked { prev, curr in
+            isOutputNode(prev) && isOutputNode(curr)
         }
-        fatalError("Unexpected node type: \(type(of: node))")
+
+        let lines = chunks.map { chunk -> String in
+            let chunkArray = Array(chunk)
+
+            // Code nodes are emitted directly
+            if let code = chunkArray.first as? CodeNode {
+                return String(code.code)
+            }
+
+            // Output nodes are batched into print statements
+            return printStatement(for: chunkArray)
+        }
+
+        return lines.joined(separator: "\n")
+    }
+
+    /// Returns a complete Swift program for `ast` with `bindings`.
+    func generateCompleteProgram(
+        _ ast: BlockNode, bindings: [String: Any] = [:]
+    ) -> String {
+        // Generate bindings code
+        let bindingsCode =
+            bindings
+            .filter { $0.key != "__children__" && $0.key != "__context__" }
+            .map { "let \($0.key) = \(Self.formatValue($0.value))" }
+            .joined(separator: "\n")
+
+        // Generate template code
+        let templateCode = generateCode(for: ast.children)
+
+        return """
+            import Foundation
+
+            // Bindings
+            \(bindingsCode)
+
+            // Generated code
+            \(templateCode)
+
+            """
+    }
+
+    /// Executes `ast` with `bindings` by compiling and running generated Swift code.
+    func execute(_ ast: BlockNode, bindings: [String: Any] = [:]) throws -> String {
+        // Generate complete Swift program without source location directives
+        let executionGenerator = CodeGenerator(
+            templateText: templateText,
+            filename: filename,
+            lineDirective: lineDirective,
+            emitSourceLocation: false
+        )
+        let swiftCode = executionGenerator.generateCompleteProgram(ast, bindings: bindings)
+
+        // Write to temporary file
+        let tempDir = FileManager.default.temporaryDirectory
+        let sourceFile = tempDir.appendingPathComponent("gyb_\(UUID().uuidString).swift")
+        let executableFile = tempDir.appendingPathComponent("gyb_\(UUID().uuidString)")
+
+        defer {
+            try? FileManager.default.removeItem(at: sourceFile)
+            try? FileManager.default.removeItem(at: executableFile)
+        }
+
+        try swiftCode.write(to: sourceFile, atomically: true, encoding: .utf8)
+
+        // Compile
+        let compileProcess = Process()
+        compileProcess.executableURL = URL(fileURLWithPath: "/usr/bin/swiftc")
+        compileProcess.arguments = ["-o", executableFile.path, sourceFile.path]
+
+        let compileErrorPipe = Pipe()
+        compileProcess.standardError = compileErrorPipe
+        compileProcess.standardOutput = compileErrorPipe
+
+        try compileProcess.run()
+        compileProcess.waitUntilExit()
+
+        if compileProcess.terminationStatus != 0 {
+            let errorData = compileErrorPipe.fileHandleForReading.readDataToEndOfFile()
+            let errorMessage =
+                String(data: errorData, encoding: .utf8) ?? "Unknown compilation error"
+            throw GYBError.compilationFailed(errorMessage)
+        }
+
+        // Execute
+        let runProcess = Process()
+        runProcess.executableURL = executableFile
+
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+        runProcess.standardOutput = outputPipe
+        runProcess.standardError = errorPipe
+
+        try runProcess.run()
+        runProcess.waitUntilExit()
+
+        if runProcess.terminationStatus != 0 {
+            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+            let errorMessage =
+                String(data: errorData, encoding: .utf8) ?? "Unknown execution error"
+            throw GYBError.executionFailed(errorMessage)
+        }
+
+        let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+        return String(data: outputData, encoding: .utf8) ?? ""
+    }
+
+    /// Returns the start position of `nodes`'s first element.
+    private func sourceLocationIndex(for nodes: [ASTNode]) -> String.Index {
+        let first = nodes.first!
+
+        if let literal = first as? LiteralNode {
+            return literal.text.startIndex
+        } else if let substitution = first as? SubstitutionNode {
+            return substitution.expression.startIndex
+        }
+        fatalError("Unexpected node type: \(type(of: first))")
+    }
+
+    /// Returns `nodes`'s text content as strings, with substitutions formatted as `\(expression)`.
+    private func textContent(from nodes: [ASTNode]) -> [String] {
+        return nodes.map { node in
+            if let literal = node as? LiteralNode {
+                return String(literal.text)
+            } else if let substitution = node as? SubstitutionNode {
+                return "\\(\(substitution.expression))"
+            }
+            fatalError("Unexpected node type: \(type(of: node))")
+        }
+    }
+
+    /// Returns a Swift print statement outputting `nodes`'s combined text, prefixed by a source location directive when configured.
+    private func printStatement(for nodes: [ASTNode]) -> String {
+        let combined = textContent(from: nodes).joined()
+        var result: [String] = []
+
+        // Emit source location directive if requested
+        if emitSourceLocation {
+            let index = sourceLocationIndex(for: nodes)
+            let lineNumber = getLineNumber(for: index, in: templateText, lineStarts: lineStarts)
+            let directive = formatSourceLocation(
+                lineDirective, filename: filename, line: lineNumber)
+            result.append(directive)
+        }
+
+        let escaped = escapeForSwiftMultilineString(combined)
+        result.append("print(\"\"\"\n\(escaped)\n\"\"\", terminator: \"\")")
+
+        return result.joined(separator: "\n")
+    }
+
+    /// Returns whether `node` represents template output.
+    private func isOutputNode(_ node: ASTNode) -> Bool {
+        return node is LiteralNode || node is SubstitutionNode
+    }
+
+    /// Formats `value` for embedding in generated code.
+    private static func formatValue(_ value: Any) -> String {
+        switch value {
+        case let str as String:
+            // Escape quotes and backslashes
+            let escaped =
+                str
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "\"", with: "\\\"")
+            return "\"\(escaped)\""
+        case let num as Int:
+            return "\(num)"
+        case let num as Double:
+            return "\(num)"
+        case let bool as Bool:
+            return "\(bool)"
+        case let array as [Any]:
+            let elements = array.map { formatValue($0) }.joined(separator: ", ")
+            return "[\(elements)]"
+        default:
+            return "\"\(value)\""
+        }
     }
 }
 
@@ -62,221 +247,4 @@ private func formatSourceLocation(_ template: String, filename: String, line: In
         template
         .replacingOccurrences(of: "\\(file)", with: filename)
         .replacingOccurrences(of: "\\(line)", with: "\(line)")
-}
-
-/// Returns a Swift print statement outputting `nodes`'s combined text, prefixed by a source location directive when `emitSourceLocation` is true.
-private func printStatement(
-    for nodes: [ASTNode],
-    templateText: String,
-    lineStarts: [String.Index],
-    filename: String,
-    lineDirective: String,
-    emitSourceLocation: Bool
-) -> String {
-    let combined = textContent(from: nodes).joined()
-    var result: [String] = []
-
-    // Emit source location directive if requested
-    if emitSourceLocation {
-        let index = sourceLocationIndex(for: nodes)
-        let lineNumber = getLineNumber(for: index, in: templateText, lineStarts: lineStarts)
-        let directive = formatSourceLocation(lineDirective, filename: filename, line: lineNumber)
-        result.append(directive)
-    }
-
-    let escaped = escapeForSwiftMultilineString(combined)
-    result.append("print(\"\"\"\n\(escaped)\n\"\"\", terminator: \"\")")
-
-    return result.joined(separator: "\n")
-}
-
-/// Returns whether `node` represents template output.
-private func isOutputNode(_ node: ASTNode) -> Bool {
-    return node is LiteralNode || node is SubstitutionNode
-}
-
-/// Returns Swift code executing `nodes`, batching consecutive output nodes into print statements.
-func astNodesToSwiftCode(
-    _ nodes: [ASTNode],
-    templateText: String = "",
-    filename: String = "",
-    lineDirective: String = "#sourceLocation(file: \"\\(file)\", line: \\(line))",
-    emitSourceLocation: Bool = true
-) -> String {
-    let lineStarts = getLineStarts(templateText)
-
-    // Group consecutive output nodes together; keep code nodes separate
-    let chunks = nodes.chunked { prev, curr in
-        isOutputNode(prev) && isOutputNode(curr)
-    }
-
-    let lines = chunks.map { chunk -> String in
-        let chunkArray = Array(chunk)
-
-        // Code nodes are emitted directly
-        if let code = chunkArray.first as? CodeNode {
-            return String(code.code)
-        }
-
-        // Output nodes are batched into print statements
-        return printStatement(
-            for: chunkArray,
-            templateText: templateText,
-            lineStarts: lineStarts,
-            filename: filename,
-            lineDirective: lineDirective,
-            emitSourceLocation: emitSourceLocation
-        )
-    }
-
-    return lines.joined(separator: "\n")
-}
-
-// MARK: - Template Execution
-
-/// Returns the generated Swift source code for `ast` with `bindings` (without executing).
-func generateSwiftCode(
-    _ ast: BlockNode,
-    templateText: String,
-    bindings: [String: Any] = [:],
-    filename: String = "",
-    lineDirective: String = "#sourceLocation(file: \"\\(file)\", line: \\(line))",
-    emitSourceLocation: Bool = true
-) throws -> String {
-    // Generate complete Swift program
-    let bindingsCode =
-        bindings
-        .filter { $0.key != "__children__" && $0.key != "__context__" }  // Filter internal bindings
-        .map { "let \($0.key) = \(formatValue($0.value))" }
-        .joined(separator: "\n")
-
-    let swiftCode = astNodesToSwiftCode(
-        ast.children,
-        templateText: templateText,
-        filename: filename,
-        lineDirective: lineDirective,
-        emitSourceLocation: emitSourceLocation
-    )
-
-    return """
-        import Foundation
-
-        // Bindings
-        \(bindingsCode)
-
-        // Generated code
-        \(swiftCode)
-
-        """
-}
-
-/// Formats a Swift value for embedding in generated code.
-private func formatValue(_ value: Any) -> String {
-    switch value {
-    case let str as String:
-        // Escape quotes and backslashes
-        let escaped =
-            str
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-        return "\"\(escaped)\""
-    case let num as Int:
-        return "\(num)"
-    case let num as Double:
-        return "\(num)"
-    case let bool as Bool:
-        return "\(bool)"
-    case let array as [Any]:
-        let elements = array.map { formatValue($0) }.joined(separator: ", ")
-        return "[\(elements)]"
-    default:
-        return "\"\(value)\""
-    }
-}
-
-/// Executes `ast` with `bindings` and returns generated output.
-func executeTemplate(
-    _ ast: BlockNode,
-    templateText: String,
-    filename: String = "",
-    lineDirective: String = "#sourceLocation(file: \"\\(file)\", line: \\(line))",
-    bindings: [String: Any] = [:]
-) throws -> String {
-    return try executeTemplateAsWholeProgram(
-        ast,
-        templateText: templateText,
-        filename: filename,
-        lineDirective: lineDirective,
-        bindings: bindings
-    )
-}
-
-/// Executes template by compiling and running generated Swift code.
-private func executeTemplateAsWholeProgram(
-    _ ast: BlockNode,
-    templateText text: String,
-    filename: String,
-    lineDirective: String,
-    bindings: [String: Any]
-) throws -> String {
-    // Generate complete Swift program
-    let swiftCode = try generateSwiftCode(
-        ast,
-        templateText: text,
-        bindings: bindings,
-        filename: filename,
-        lineDirective: lineDirective,
-        emitSourceLocation: false  // Don't emit line directives for execution
-    )
-
-    // Write to temporary file
-    let tempDir = FileManager.default.temporaryDirectory
-    let sourceFile = tempDir.appendingPathComponent("gyb_\(UUID().uuidString).swift")
-    let executableFile = tempDir.appendingPathComponent("gyb_\(UUID().uuidString)")
-
-    defer {
-        try? FileManager.default.removeItem(at: sourceFile)
-        try? FileManager.default.removeItem(at: executableFile)
-    }
-
-    try swiftCode.write(to: sourceFile, atomically: true, encoding: .utf8)
-
-    // Compile
-    let compileProcess = Process()
-    compileProcess.executableURL = URL(fileURLWithPath: "/usr/bin/swiftc")
-    compileProcess.arguments = ["-o", executableFile.path, sourceFile.path]
-
-    let compileErrorPipe = Pipe()
-    compileProcess.standardError = compileErrorPipe
-    compileProcess.standardOutput = compileErrorPipe
-
-    try compileProcess.run()
-    compileProcess.waitUntilExit()
-
-    if compileProcess.terminationStatus != 0 {
-        let errorData = compileErrorPipe.fileHandleForReading.readDataToEndOfFile()
-        let errorMessage = String(data: errorData, encoding: .utf8) ?? "Unknown compilation error"
-        throw GYBError.compilationFailed(errorMessage)
-    }
-
-    // Execute
-    let runProcess = Process()
-    runProcess.executableURL = executableFile
-
-    let outputPipe = Pipe()
-    let errorPipe = Pipe()
-    runProcess.standardOutput = outputPipe
-    runProcess.standardError = errorPipe
-
-    try runProcess.run()
-    runProcess.waitUntilExit()
-
-    if runProcess.terminationStatus != 0 {
-        let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-        let errorMessage = String(data: errorData, encoding: .utf8) ?? "Unknown execution error"
-        throw GYBError.executionFailed(errorMessage)
-    }
-
-    let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-    return String(data: outputData, encoding: .utf8) ?? ""
 }

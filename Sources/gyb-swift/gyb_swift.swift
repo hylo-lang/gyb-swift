@@ -132,11 +132,17 @@ struct GYBSwift: ParsableCommand {
             return
         }
 
+        // Create code generator for template
+        let generator = CodeGenerator(
+            templateText: templateText,
+            filename: filename,
+            lineDirective: lineDirective,
+            emitSourceLocation: true
+        )
+
         // Dump generated Swift code if requested
         if dumpCode {
-            let code = try generateSwiftCode(
-                ast, templateText: templateText, bindings: bindings, filename: filename,
-                lineDirective: lineDirective, emitSourceLocation: true)
+            let code = generator.generateCompleteProgram(ast, bindings: bindings)
             print(code)
             return
         }
@@ -148,13 +154,7 @@ struct GYBSwift: ParsableCommand {
         }
 
         // Execute template
-        let result = try executeTemplate(
-            ast,
-            templateText: templateText,
-            filename: filename,
-            lineDirective: lineDirective,
-            bindings: bindings
-        )
+        let result = try generator.execute(ast, bindings: bindings)
 
         // Write output
         if output == "-" {

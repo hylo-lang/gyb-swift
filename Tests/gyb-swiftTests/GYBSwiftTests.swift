@@ -1,5 +1,43 @@
 import Testing
+
 @testable import gyb_swift
+
+// MARK: - Test Helpers
+
+/// Executes `text` as a template and returns the output.
+func execute(
+    _ text: String,
+    bindings: [String: Any] = [:],
+    filename: String = "test",
+    lineDirective: String = ""
+) throws -> String {
+    let ast = try parseTemplate(filename: filename, text: text)
+    let generator = CodeGenerator(
+        templateText: text,
+        filename: filename,
+        lineDirective: lineDirective,
+        emitSourceLocation: true
+    )
+    return try generator.execute(ast, bindings: bindings)
+}
+
+/// Generates Swift code for `text` as a template with `bindings`.
+func generateCode(
+    _ text: String,
+    bindings: [String: Any] = [:],
+    filename: String = "test.gyb",
+    lineDirective: String = "//# line \\(line) \"\\(file)\"",
+    emitSourceLocation: Bool = true
+) throws -> String {
+    let ast = try parseTemplate(filename: filename, text: text)
+    let generator = CodeGenerator(
+        templateText: text,
+        filename: filename,
+        lineDirective: lineDirective,
+        emitSourceLocation: emitSourceLocation
+    )
+    return generator.generateCompleteProgram(ast, bindings: bindings)
+}
 
 // MARK: - Test Helpers
 
@@ -14,7 +52,7 @@ func token(_ kind: TemplateToken.Kind, _ text: String) -> TemplateToken {
 func getLineStarts_multiLine() throws {
     let text = "line1\nline2\nline3"
     let starts = getLineStarts(text)
-    
+
     #expect(starts.count == 4)
     #expect(starts[0] == text.startIndex)
     #expect(starts.last == text.endIndex)
@@ -39,8 +77,8 @@ func getLineStarts_singleLine() {
 
 @Test("getLineStarts handles different newline types")
 func getLineStarts_differentNewlines() {
-    #expect(getLineStarts("a\nb").count == 3)    // LF
-    #expect(getLineStarts("a\rb").count == 3)    // CR
+    #expect(getLineStarts("a\nb").count == 3)  // LF
+    #expect(getLineStarts("a\rb").count == 3)  // CR
     #expect(getLineStarts("a\r\nb").count == 3)  // CRLF (note: \r\n is one Character)
 }
 
@@ -50,7 +88,7 @@ func getLineStarts_differentNewlines() {
 func tokenize_literal() {
     var tokenizer = TemplateTokens(text: "Hello, World!")
     let token = tokenizer.next()
-    
+
     #expect(token?.kind == .literal)
     #expect(token?.text == "Hello, World!")
 }
@@ -58,10 +96,10 @@ func tokenize_literal() {
 @Test("tokenize $$ escape sequence")
 func tokenize_escapedDollar() {
     let tokens = Array(TemplateTokens(text: "$$100"))
-    
+
     let expected = [
         token(.symbol, "$$"),
-        token(.literal, "100")
+        token(.literal, "100"),
     ]
     #expect(tokens == expected)
 }
@@ -69,10 +107,10 @@ func tokenize_escapedDollar() {
 @Test("tokenize %% escape sequence")
 func tokenize_escapedPercent() {
     let tokens = Array(TemplateTokens(text: "100%%"))
-    
+
     let expected = [
         token(.literal, "100"),
-        token(.symbol, "%%")
+        token(.symbol, "%%"),
     ]
     #expect(tokens == expected)
 }
@@ -80,7 +118,7 @@ func tokenize_escapedPercent() {
 @Test("tokenize ${} substitution")
 func tokenize_substitution() {
     let tokens = Array(TemplateTokens(text: "${x}"))
-    
+
     let expected = [
         token(.substitutionOpen, "${x}")
     ]
@@ -90,7 +128,7 @@ func tokenize_substitution() {
 @Test("tokenize %{} code block")
 func tokenize_codeBlock() {
     let tokens = Array(TemplateTokens(text: "%{ let x = 42 }%"))
-    
+
     let expected = [
         token(.gybBlock, "%{ let x = 42 }%")
     ]
@@ -103,7 +141,7 @@ func tokenize_codeBlock() {
 // stop at the }% inside the string literal.
 func codeBlock_delimiterInString() {
     let tokens = Array(TemplateTokens(text: #"%{ let msg = "Error: }% not allowed" }%Done"#))
-    
+
     #expect(tokens.count == 2)
     #expect(tokens[0].kind == .gybBlock)
     #expect(tokens[0].text == #"%{ let msg = "Error: }% not allowed" }%"#)
@@ -116,7 +154,7 @@ func codeBlock_delimiterInString() {
 // where } appears in string keys.
 func substitution_braceInString() {
     let tokens = Array(TemplateTokens(text: #"${dict["key}value"]}Done"#))
-    
+
     #expect(tokens.count == 2)
     #expect(tokens[0].kind == .substitutionOpen)
     #expect(tokens[0].text == #"${dict["key}value"]}"#)
@@ -128,7 +166,7 @@ func substitution_braceInString() {
 func nestedStrings_withDelimiters() {
     let text = #"%{ let a = "first }% here"; let b = "second }% there" }%"#
     let tokens = Array(TemplateTokens(text: text))
-    
+
     #expect(tokens.count == 1)
     #expect(tokens[0].kind == .gybBlock)
     #expect(tokens[0].text == #"%{ let a = "first }% here"; let b = "second }% there" }%"#)
@@ -142,7 +180,7 @@ func parser_resilientWithInvalidSwift() {
     // Test case: valid Swift code followed by template text
     // When parsing ${count}, we actually parse "count}Done" which is invalid Swift
     let tokens = Array(TemplateTokens(text: "${count}Done"))
-    
+
     #expect(tokens.count == 2)
     #expect(tokens[0].kind == .substitutionOpen)
     #expect(tokens[0].text == "${count}")
@@ -154,7 +192,7 @@ func parser_resilientWithInvalidSwift() {
 func codeBlock_withClosure() {
     let text = #"%{ items.forEach { print($0) } }%Done"#
     let tokens = Array(TemplateTokens(text: text))
-    
+
     #expect(tokens.count == 2)
     #expect(tokens[0].kind == .gybBlock)
     #expect(tokens[0].text == #"%{ items.forEach { print($0) } }%"#)
@@ -165,7 +203,7 @@ func codeBlock_withClosure() {
 func codeBlock_withDictionary() {
     let text = #"%{ let dict = ["key": "value"]; let x = dict["key"] }%After"#
     let tokens = Array(TemplateTokens(text: text))
-    
+
     #expect(tokens.count == 2)
     #expect(tokens[0].kind == .gybBlock)
     #expect(tokens[0].text == #"%{ let dict = ["key": "value"]; let x = dict["key"] }%"#)
@@ -175,25 +213,26 @@ func codeBlock_withDictionary() {
 @Test("%{...}% code blocks with nested control structures")
 func codeBlock_nestedControlStructures() {
     let text = #"""
-    %{ if true {
-        let dict = ["a": 1]
-        for (k, v) in dict {
-            print("\(k): \(v)")
-        }
-    } }%Done
-    """#
+        %{ if true {
+            let dict = ["a": 1]
+            for (k, v) in dict {
+                print("\(k): \(v)")
+            }
+        } }%Done
+        """#
     let tokens = Array(TemplateTokens(text: text))
-    
+
     #expect(tokens.count == 2)
     #expect(tokens[0].kind == .gybBlock)
-    #expect(tokens[0].text == #"""
-    %{ if true {
-        let dict = ["a": 1]
-        for (k, v) in dict {
-            print("\(k): \(v)")
-        }
-    } }%
-    """#)
+    #expect(
+        tokens[0].text == #"""
+            %{ if true {
+                let dict = ["a": 1]
+                for (k, v) in dict {
+                    print("\(k): \(v)")
+                }
+            } }%
+            """#)
     #expect(tokens[1].text == "Done")
 }
 
@@ -201,7 +240,7 @@ func codeBlock_nestedControlStructures() {
 func codeBlock_withGenerics() {
     let text = #"%{ let arr: Array<[String: Int]> = [] }%Text"#
     let tokens = Array(TemplateTokens(text: text))
-    
+
     #expect(tokens.count == 2)
     #expect(tokens[0].kind == .gybBlock)
     #expect(tokens[0].text == #"%{ let arr: Array<[String: Int]> = [] }%"#)
@@ -212,7 +251,7 @@ func codeBlock_withGenerics() {
 func codeBlock_trailingClosure() {
     let text = #"%{ let result = numbers.map { $0 * 2 } }%End"#
     let tokens = Array(TemplateTokens(text: text))
-    
+
     #expect(tokens.count == 2)
     #expect(tokens[0].kind == .gybBlock)
     #expect(tokens[0].text == #"%{ let result = numbers.map { $0 * 2 } }%"#)
@@ -222,16 +261,16 @@ func codeBlock_trailingClosure() {
 @Test("multiline string literals with delimiters")
 func multilineString_withDelimiter() {
     let text = #"""
-    %{ let msg = """
-    Error message with }% in it
-    """ }%Done
-    """#
+        %{ let msg = """
+        Error message with }% in it
+        """ }%Done
+        """#
     var tokenizer = TemplateTokens(text: text)
     var tokens: [TemplateToken] = []
     while let token = tokenizer.next() {
         tokens.append(token)
     }
-    
+
     #expect(tokens.count >= 1)
 }
 
@@ -239,7 +278,7 @@ func multilineString_withDelimiter() {
 func tokenize_codeLines() {
     var tokenizer = TemplateTokens(text: "% let x = 10\n")
     let token = tokenizer.next()
-    
+
     #expect(token?.kind == .gybLines)
 }
 
@@ -250,13 +289,13 @@ func tokenize_codeLines() {
 func tokenize_pythonDoctest1() {
     let text = "% for x in 0..<10 {\n%  print(x)\n% }\njuicebox"
     let tokens = Array(TemplateTokens(text: text))
-    
+
     // Swift tokenizes each %-line separately (newlines after %-lines are consumed by tokenizer)
     let expected = [
         token(.gybLines, "% for x in 0..<10 {"),
         token(.gybLines, "%  print(x)"),
         token(.gybLines, "% }"),
-        token(.literal, "juicebox")
+        token(.literal, "juicebox"),
     ]
     #expect(tokens == expected)
 }
@@ -265,18 +304,18 @@ func tokenize_pythonDoctest1() {
 // Swift-style template with control flow
 func tokenize_pythonDoctest2() {
     let text = """
-Nothing
-% if x != 0 {
-%    for i in 0..<3 {
-${i}
-%    }
-% } else {
-THIS SHOULD NOT APPEAR IN THE OUTPUT
-% }
+        Nothing
+        % if x != 0 {
+        %    for i in 0..<3 {
+        ${i}
+        %    }
+        % } else {
+        THIS SHOULD NOT APPEAR IN THE OUTPUT
+        % }
 
-"""
+        """
     let tokens = Array(TemplateTokens(text: text))
-    
+
     // Verify exact token sequence (newlines after %-lines are consumed by tokenizer)
     let expected = [
         token(.literal, "Nothing\n"),
@@ -287,7 +326,7 @@ THIS SHOULD NOT APPEAR IN THE OUTPUT
         token(.gybLines, "%    }"),
         token(.gybLines, "% } else {"),
         token(.literal, "THIS SHOULD NOT APPEAR IN THE OUTPUT\n"),
-        token(.gybLines, "% }")
+        token(.gybLines, "% }"),
     ]
     #expect(tokens == expected)
 }
@@ -296,17 +335,17 @@ THIS SHOULD NOT APPEAR IN THE OUTPUT
 // Swift-style template with all token types
 func tokenize_pythonDoctest3() {
     let text = """
-This is literal stuff ${x}
-%{ let code = 1 }%
-and %-lines:
-% let x = 1
-% for i in 0..<1 {
-%% literal percent
-% }
+        This is literal stuff ${x}
+        %{ let code = 1 }%
+        and %-lines:
+        % let x = 1
+        % for i in 0..<1 {
+        %% literal percent
+        % }
 
-"""
+        """
     let tokens = Array(TemplateTokens(text: text))
-    
+
     // Verify exact token sequence (%-lines consume trailing newline, "and %-lines:" is parsed as %-line)
     let expected = [
         token(.literal, "This is literal stuff "),
@@ -319,7 +358,7 @@ and %-lines:
         token(.gybLines, "% for i in 0..<1 {"),
         token(.symbol, "%%"),
         token(.literal, " literal percent\n"),
-        token(.gybLines, "% }")
+        token(.gybLines, "% }"),
     ]
     #expect(tokens == expected)
 }
@@ -330,7 +369,7 @@ and %-lines:
 func parse_literalTemplate() throws {
     let text = "Hello, World!"
     let ast = try parseTemplate(filename: "test", text: text)
-    
+
     #expect(ast.children.count == 1)
     #expect(ast.children[0] is LiteralNode)
 }
@@ -339,7 +378,7 @@ func parse_literalTemplate() throws {
 func parse_templateWithEscapedSymbols() throws {
     let text = "$$dollar and %%percent"
     let ast = try parseTemplate(filename: "test", text: text)
-    
+
     #expect(ast.children.count >= 1)
 }
 
@@ -347,7 +386,7 @@ func parse_templateWithEscapedSymbols() throws {
 func parse_substitution() throws {
     let text = "${x}"
     let ast = try parseTemplate(filename: "test", text: text)
-    
+
     #expect(ast.children.count == 1)
     #expect(ast.children[0] is SubstitutionNode)
 }
@@ -356,7 +395,7 @@ func parse_substitution() throws {
 func parse_codeBlock() throws {
     let text = "%{ let x = 42 }%"
     let ast = try parseTemplate(filename: "test", text: text)
-    
+
     #expect(ast.children.count == 1)
     #expect(ast.children[0] is CodeNode)
 }
@@ -366,64 +405,57 @@ func parse_codeBlock() throws {
 @Test("execute simple literal template")
 func execute_literalTemplate() throws {
     let text = "Hello, World!"
-    let ast = try parseTemplate(filename: "test", text: text)
-    let result = try executeTemplate(ast, templateText: text, filename: "test", lineDirective: "", bindings: [:])
-    
+    let result = try execute(text)
+
     #expect(result == "Hello, World!")
 }
 
 @Test("execute template with escaped symbols")
 func execute_templateWithEscapedSymbols() throws {
     let text = "Price: $$50"
-    let ast = try parseTemplate(filename: "test", text: text)
-    let result = try executeTemplate(ast, templateText: text, filename: "test", lineDirective: "", bindings: [:])
-    
+    let result = try execute(text)
+
     #expect(result == "Price: $50")
 }
 
 @Test("substitution with bound variable")
 func substitution_withSimpleBinding() throws {
     let text = "x = ${x}"
-    let ast = try parseTemplate(filename: "test", text: text)
-    let result = try executeTemplate(ast, templateText: text, filename: "test", lineDirective: "", bindings: ["x": 42])
+    let result = try execute(text, bindings: ["x": 42])
     #expect(result == "x = 42")
 }
 
 @Test("empty template")
 func execute_emptyTemplate() throws {
     let text = ""
-    let ast = try parseTemplate(filename: "test", text: text)
-    let result = try executeTemplate(ast, templateText: text, filename: "test", lineDirective: "", bindings: [:])
-    
+    let result = try execute(text)
+
     #expect(result == "")
 }
 
 @Test("template with only whitespace")
 func execute_whitespaceOnly() throws {
     let text = "   \n\t\n   "
-    let ast = try parseTemplate(filename: "test", text: text)
-    let result = try executeTemplate(ast, templateText: text, filename: "test", lineDirective: "", bindings: [:])
-    
+    let result = try execute(text)
+
     #expect(result == text)
 }
 
 @Test("mixed literal and symbols")
 func execute_mixedLiteralsAndSymbols() throws {
     let text = "Regular $$text with %%symbols"
-    let ast = try parseTemplate(filename: "test", text: text)
-    let result = try executeTemplate(ast, templateText: text, filename: "test", lineDirective: "", bindings: [:])
-    
+    let result = try execute(text)
+
     #expect(result == "Regular $text with %symbols")
 }
 
 @Test("malformed substitutions handled gracefully")
 func parse_malformedSubstitution() {
     let text = "${unclosed"
-    
+
     // Should handle gracefully - either parse as literal or throw clear error
     do {
-        let ast = try parseTemplate(filename: "test", text: text)
-        _ = try executeTemplate(ast, templateText: text, filename: "test", lineDirective: "", bindings: [:])
+        _ = try execute(text)
     } catch {
         // Error is expected for malformed input
     }
@@ -432,9 +464,8 @@ func parse_malformedSubstitution() {
 @Test("multiple literals in sequence")
 func execute_multipleLiterals() throws {
     let text = "First line\nSecond line\nThird line"
-    let ast = try parseTemplate(filename: "test", text: text)
-    let result = try executeTemplate(ast, templateText: text, filename: "test", lineDirective: "", bindings: [:])
-    
+    let result = try execute(text)
+
     #expect(result == text)
 }
 
@@ -442,9 +473,9 @@ func execute_multipleLiterals() throws {
 func ast_structure() throws {
     let text = "Text ${x} more text"
     let ast = try parseTemplate(filename: "test", text: text)
-    
+
     #expect(ast.children.count >= 1)
-    
+
     var hasSubstitution = false
     for child in ast.children {
         if child is SubstitutionNode {
@@ -457,42 +488,32 @@ func ast_structure() throws {
 @Test("line directive generation")
 func execute_lineDirectives() throws {
     let text = "Line 1\nLine 2"
-    let ast = try parseTemplate(filename: "test.gyb", text: text)
-    
+
     // Test with custom line directive format
-    let code = try generateSwiftCode(
-        ast,
-        templateText: text,
-        bindings: [:],
-        filename: "test.gyb",
-        lineDirective: "//# line \\(line) \"\\(file)\"",
-        emitSourceLocation: true
-    )
-    
+    let code = try generateCode(text, bindings: [:])
+
     // Verify exact generated code with line directives
     let expectedCode = """
-import Foundation
+        import Foundation
 
-// Bindings
+        // Bindings
 
 
-// Generated code
-//# line 1 "test.gyb"
-print(\"\"\"
-Line 1
-Line 2
-\"\"\", terminator: "")
+        // Generated code
+        //# line 1 "test.gyb"
+        print(\"\"\"
+        Line 1
+        Line 2
+        \"\"\", terminator: "")
 
-"""
+        """
     #expect(code == expectedCode)
-    
+
     // Test execution produces exact expected output
-    let result = try executeTemplate(
-        ast,
-        templateText: text,
+    let result = try execute(
+        text,
         filename: "test.gyb",
-        lineDirective: "//# line \\(line) \"\\(file)\"",
-        bindings: [:]
+        lineDirective: "//# line \\(line) \"\\(file)\""
     )
     #expect(result == "Line 1\nLine 2")
 }
@@ -504,7 +525,7 @@ func components_instantiation() {
     // Test tokenizer - verify it can be created and used
     var tokenizer = TemplateTokens(text: "test")
     _ = tokenizer.next()  // Verify it works
-    
+
     // Test parse context
     let context = ParseContext(filename: "test", text: "content")
     #expect(context.filename == "test")
@@ -514,13 +535,13 @@ func components_instantiation() {
 func astNode_creation() {
     let literal = LiteralNode(text: "hello")
     #expect(literal.text == "hello")
-    
+
     let code = CodeNode(code: "let x = 1")
     #expect(code.code == "let x = 1")
-    
+
     let subst = SubstitutionNode(expression: "x")
     #expect(subst.expression == "x")
-    
+
     let block = BlockNode(children: [literal])
     #expect(block.children.count == 1)
 }
@@ -530,27 +551,20 @@ func astNode_creation() {
 @Test("realistic template with multiple features")
 func integration_realisticTemplate() throws {
     let text = """
-    // Generated file
-    struct Example {
-        let count = ${count}
-    }
-    """
-    
-    let ast = try parseTemplate(filename: "test.gyb", text: text)
-    let result = try executeTemplate(
-        ast,
-        templateText: text,
-        filename: "test.gyb",
-        lineDirective: "",
-        bindings: ["count": 42]
-    )
-    
+        // Generated file
+        struct Example {
+            let count = ${count}
+        }
+        """
+
+    let result = try execute(text, bindings: ["count": 42], filename: "test.gyb")
+
     let expected = """
-    // Generated file
-    struct Example {
-        let count = 42
-    }
-    """
+        // Generated file
+        struct Example {
+            let count = 42
+        }
+        """
     #expect(result == expected)
 }
 
@@ -558,80 +572,70 @@ func integration_realisticTemplate() throws {
 // Swift templates use Swift syntax with unmatched braces
 func execute_swiftControlFlow() throws {
     let text = """
-% for i in 0..<3 {
-${i}
-% }
-"""
-    
-    let ast = try parseTemplate(filename: "test.gyb", text: text)
-    let result = try executeTemplate(
-        ast,
-        templateText: text,
-        filename: "test.gyb",
-        lineDirective: "",
-        bindings: [:]
-    )
-    
-    let expected = """
-0
-1
-2
+        % for i in 0..<3 {
+        ${i}
+        % }
+        """
 
-"""
+    let result = try execute(text, filename: "test.gyb")
+
+    let expected = """
+        0
+        1
+        2
+
+        """
     #expect(result == expected)
 }
 
 @Test("execute template with if control flow")
 func execute_swiftIf() throws {
     let text = """
-% let x = 5
-% if x > 3 {
-large
-% }
-"""
-    
-    let ast = try parseTemplate(filename: "test", text: text)
-    let result = try executeTemplate(ast, templateText: text, filename: "test", lineDirective: "", bindings: [:])
-    
+        % let x = 5
+        % if x > 3 {
+        large
+        % }
+        """
+
+    let result = try execute(text)
+
     #expect(result == "large\n")
 }
 
 @Test("execute template with nested control flow")
 func execute_nestedControlFlow() throws {
     let text = """
-% for x in 1...2 {
-%   for y in 1...2 {
-(${x},${y})
-%   }
-% }
-"""
-    
-    let ast = try parseTemplate(filename: "test", text: text)
-    let result = try executeTemplate(ast, templateText: text, filename: "test", lineDirective: "", bindings: [:])
-    
-    let expected = """
-(1,1)
-(1,2)
-(2,1)
-(2,2)
+        % for x in 1...2 {
+        %   for y in 1...2 {
+        (${x},${y})
+        %   }
+        % }
+        """
 
-"""
+    let result = try execute(text)
+
+    let expected = """
+        (1,1)
+        (1,2)
+        (2,1)
+        (2,2)
+
+        """
     #expect(result == expected)
 }
 
 @Test("template structure is preserved")
 func integration_templateStructurePreservation() throws {
     let text = """
-    Header
-    
-    Body content
-    
-    Footer
-    """
-    
-    let ast = try parseTemplate(filename: "test", text: text)
-    let result = try executeTemplate(ast, templateText: text, filename: "test", lineDirective: "", bindings: [:])
-    
+        Header
+
+        Body content
+
+        Footer
+        """
+
+    let result = try execute(text)
+
     #expect(result == text)
 }
 
@@ -641,73 +645,64 @@ func integration_templateStructurePreservation() throws {
 // Python doctest: execute_template with loop that outputs multiple times
 func lineDirective_loopIterations() throws {
     let text = """
-Nothing
-% if x != 0 {
-%    for i in 0..<3 {
-${i}
-%    }
-% } else {
-THIS SHOULD NOT APPEAR IN THE OUTPUT
-% }
-"""
-    
-    let ast = try parseTemplate(filename: "test.gyb", text: text)
-    let code = try generateSwiftCode(
-        ast,
-        templateText: text,
-        bindings: ["x": 1],
-        filename: "test.gyb",
-        lineDirective: "//# line \\(line) \"\\(file)\"",
-        emitSourceLocation: true
-    )
-    
+        Nothing
+        % if x != 0 {
+        %    for i in 0..<3 {
+        ${i}
+        %    }
+        % } else {
+        THIS SHOULD NOT APPEAR IN THE OUTPUT
+        % }
+        """
+
+    let code = try generateCode(text, bindings: ["x": 1])
+
     // Verify exact generated code structure with line directives
     let expectedCode = """
-import Foundation
+        import Foundation
 
-// Bindings
-let x = 1
+        // Bindings
+        let x = 1
 
-// Generated code
-//# line 1 "test.gyb"
-print(\"\"\"
-Nothing
+        // Generated code
+        //# line 1 "test.gyb"
+        print(\"\"\"
+        Nothing
 
-\"\"\", terminator: "")
-if x != 0 {
-for i in 0..<3 {
-//# line 4 "test.gyb"
-print(\"\"\"
-\\(i)
+        \"\"\", terminator: "")
+        if x != 0 {
+        for i in 0..<3 {
+        //# line 4 "test.gyb"
+        print(\"\"\"
+        \\(i)
 
-\"\"\", terminator: "")
-}
-} else {
-//# line 7 "test.gyb"
-print(\"\"\"
-THIS SHOULD NOT APPEAR IN THE OUTPUT
+        \"\"\", terminator: "")
+        }
+        } else {
+        //# line 7 "test.gyb"
+        print(\"\"\"
+        THIS SHOULD NOT APPEAR IN THE OUTPUT
 
-\"\"\", terminator: "")
-}
+        \"\"\", terminator: "")
+        }
 
-"""
+        """
     #expect(code == expectedCode)
-    
+
     // Verify execution produces correct output
-    let result = try executeTemplate(
-        ast,
-        templateText: text,
+    let result = try execute(
+        text,
+        bindings: ["x": 1],
         filename: "test.gyb",
-        lineDirective: "//# line \\(line) \"\\(file)\"",
-        bindings: ["x": 1]
+        lineDirective: "//# line \\(line) \"\\(file)\""
     )
     let expected = """
-Nothing
-0
-1
-2
+        Nothing
+        0
+        1
+        2
 
-"""
+        """
     #expect(result == expected)
 }
 
@@ -715,56 +710,46 @@ Nothing
 // Python doctest: execute_template with code-only %-lines followed by substitution
 func lineDirective_afterCodeOnlyLines() throws {
     let text = """
-Nothing
-% var a: [Int] = []
-% for x in 0..<3 {
-%    a.append(x)
-% }
-${a}
-"""
-    
-    let ast = try parseTemplate(filename: "test.gyb", text: text)
-    let code = try generateSwiftCode(
-        ast,
-        templateText: text,
-        bindings: [:],
-        filename: "test.gyb",
-        lineDirective: "//# line \\(line) \"\\(file)\"",
-        emitSourceLocation: true
-    )
-    
+        Nothing
+        % var a: [Int] = []
+        % for x in 0..<3 {
+        %    a.append(x)
+        % }
+        ${a}
+        """
+
+    let code = try generateCode(text, bindings: [:])
+
     // Verify exact generated code with line directives at correct positions
     let expectedCode = """
-import Foundation
+        import Foundation
 
-// Bindings
+        // Bindings
 
 
-// Generated code
-//# line 1 "test.gyb"
-print(\"\"\"
-Nothing
+        // Generated code
+        //# line 1 "test.gyb"
+        print(\"\"\"
+        Nothing
 
-\"\"\", terminator: "")
-var a: [Int] = []
-for x in 0..<3 {
-a.append(x)
-}
-//# line 6 "test.gyb"
-print(\"\"\"
-\\(a)
-\"\"\", terminator: "")
+        \"\"\", terminator: "")
+        var a: [Int] = []
+        for x in 0..<3 {
+        a.append(x)
+        }
+        //# line 6 "test.gyb"
+        print(\"\"\"
+        \\(a)
+        \"\"\", terminator: "")
 
-"""
+        """
     #expect(code == expectedCode)
-    
+
     // Verify execution
-    let result = try executeTemplate(
-        ast,
-        templateText: text,
+    let result = try execute(
+        text,
         filename: "test.gyb",
-        lineDirective: "//# line \\(line) \"\\(file)\"",
-        bindings: [:]
+        lineDirective: "//# line \\(line) \"\\(file)\""
     )
     // Template has no trailing newline after the substitution
     #expect(result == "Nothing\n[0, 1, 2]")
@@ -774,20 +759,13 @@ print(\"\"\"
 // Python doctest: expand() with ${120 + \n    3}
 func substitution_multiline() throws {
     let text = """
-${120 +
+        ${120 +
 
-   3}
-"""
-    
-    let ast = try parseTemplate(filename: "test.gyb", text: text)
-    let result = try executeTemplate(
-        ast,
-        templateText: text,
-        filename: "test.gyb",
-        lineDirective: "",
-        bindings: [:]
-    )
-    
+           3}
+        """
+
+    let result = try execute(text, filename: "test.gyb")
+
     // Template has no trailing newline after the substitution
     #expect(result == "123")
 }
@@ -796,20 +774,13 @@ ${120 +
 // Swift literal string with escape sequences
 func substitution_embeddedNewlines() throws {
     let text = """
-abc
-${\"w\\nx\\nX\\ny\"}
-z
-"""
-    
-    let ast = try parseTemplate(filename: "test.gyb", text: text)
-    let result = try executeTemplate(
-        ast,
-        templateText: text,
-        filename: "test.gyb",
-        lineDirective: "",
-        bindings: [:]
-    )
-    
+        abc
+        ${\"w\\nx\\nX\\ny\"}
+        z
+        """
+
+    let result = try execute(text, filename: "test.gyb")
+
     // Note: Swift prints the escaped string literally as "w\nx\nX\ny"
     // Template has no trailing newline after 'z'
     #expect(result == "abc\nw\\nx\\nX\\ny\nz")
@@ -820,80 +791,71 @@ z
 // Note: We emit line directives at logical boundaries (per print statement) for cleaner output
 func integration_comprehensiveExpandTest() throws {
     let text = """
----
-% for i in 0..<Int(x)! {
-a pox on ${i} for epoxy
-% }
-${120 +
+        ---
+        % for i in 0..<Int(x)! {
+        a pox on ${i} for epoxy
+        % }
+        ${120 +
 
-   3}
-abc
-${\"w\\nx\\nX\\ny\"}
-z
-"""
-    
-    let ast = try parseTemplate(filename: "test.gyb", text: text)
-    let code = try generateSwiftCode(
-        ast,
-        templateText: text,
-        bindings: ["x": "2"],
-        filename: "test.gyb",
-        lineDirective: "//# line \\(line) \"\\(file)\"",
-        emitSourceLocation: true
-    )
-    
+           3}
+        abc
+        ${\"w\\nx\\nX\\ny\"}
+        z
+        """
+
+    let code = try generateCode(text, bindings: ["x": "2"])
+
     // Verify exact generated code with line directives at correct positions
     let expectedCode = """
-import Foundation
+        import Foundation
 
-// Bindings
-let x = "2"
+        // Bindings
+        let x = "2"
 
-// Generated code
-//# line 1 "test.gyb"
-print(\"\"\"
----
+        // Generated code
+        //# line 1 "test.gyb"
+        print(\"\"\"
+        ---
 
-\"\"\", terminator: "")
-for i in 0..<Int(x)! {
-//# line 3 "test.gyb"
-print(\"\"\"
-a pox on \\(i) for epoxy
+        \"\"\", terminator: "")
+        for i in 0..<Int(x)! {
+        //# line 3 "test.gyb"
+        print(\"\"\"
+        a pox on \\(i) for epoxy
 
-\"\"\", terminator: "")
-}
-//# line 5 "test.gyb"
-print(\"\"\"
-\\(120 +
+        \"\"\", terminator: "")
+        }
+        //# line 5 "test.gyb"
+        print(\"\"\"
+        \\(120 +
 
-   3)
-abc
-\\("w\\\\nx\\\\nX\\\\ny")
-z
-\"\"\", terminator: "")
+           3)
+        abc
+        \\("w\\\\nx\\\\nX\\\\ny")
+        z
+        \"\"\", terminator: "")
 
-"""
+        """
     #expect(code == expectedCode)
-    
+
     // Verify execution produces correct output
-    let result = try executeTemplate(
-        ast,
-        templateText: text,
+    let result = try execute(
+        text,
+        bindings: ["x": "2"],
         filename: "test.gyb",
-        lineDirective: "//# line \\(line) \"\\(file)\"",
-        bindings: ["x": "2"]
+        lineDirective: "//# line \\(line) \"\\(file)\""
     )
-    
+
     // Note: the ${"w\\nx\\nX\\ny"} expression outputs the escaped string literally
     let expected = """
----
-a pox on 0 for epoxy
-a pox on 1 for epoxy
-123
-abc
-w\\nx\\nX\\ny
-z
-"""
+        ---
+        a pox on 0 for epoxy
+        a pox on 1 for epoxy
+        123
+        abc
+        w\\nx\\nX\\ny
+        z
+        """
     #expect(result == expected)
 }
 
@@ -901,47 +863,42 @@ z
 // Python doctest: execute_template with '#line %(line)d "%(file)s"' format
 func lineDirective_alternativeFormat() throws {
     let text = """
-Nothing
-% var a: [Int] = []
-% for x in 0..<3 {
-%    a.append(x)
-% }
-${a}
-"""
-    
-    let ast = try parseTemplate(filename: "test.gyb", text: text)
-    let code = try generateSwiftCode(
-        ast,
-        templateText: text,
+        Nothing
+        % var a: [Int] = []
+        % for x in 0..<3 {
+        %    a.append(x)
+        % }
+        ${a}
+        """
+
+    let code = try generateCode(
+        text,
         bindings: [:],
-        filename: "test.gyb",
-        lineDirective: "#line \\(line) \"\\(file)\"",
-        emitSourceLocation: true
+        lineDirective: "#line \\(line) \"\\(file)\""
     )
-    
+
     // Verify exact generated code with alternative line directive format
     let expectedCode = """
-import Foundation
+        import Foundation
 
-// Bindings
+        // Bindings
 
 
-// Generated code
-#line 1 "test.gyb"
-print(\"\"\"
-Nothing
+        // Generated code
+        #line 1 "test.gyb"
+        print(\"\"\"
+        Nothing
 
-\"\"\", terminator: "")
-var a: [Int] = []
-for x in 0..<3 {
-a.append(x)
-}
-#line 6 "test.gyb"
-print(\"\"\"
-\\(a)
-\"\"\", terminator: "")
+        \"\"\", terminator: "")
+        var a: [Int] = []
+        for x in 0..<3 {
+        a.append(x)
+        }
+        #line 6 "test.gyb"
+        print(\"\"\"
+        \\(a)
+        \"\"\", terminator: "")
 
-"""
+        """
     #expect(code == expectedCode)
 }
-
