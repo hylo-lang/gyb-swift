@@ -43,7 +43,7 @@ struct CodeGenerator {
     init(
         templateText: String,
         filename: String = "",
-        lineDirective: String = "#sourceLocation(file: \"\\(file)\", line: \\(line))",
+        lineDirective: String = #"#sourceLocation(file: "\(file)", line: \(line))"#,
         emitSourceLocation: Bool = true
     ) {
         self.templateText = templateText
@@ -182,7 +182,7 @@ struct CodeGenerator {
             if let literal = node as? LiteralNode {
                 return String(literal.text)
             } else if let substitution = node as? SubstitutionNode {
-                return "\\(\(substitution.expression))"
+                return #"\(\#(substitution.expression))"#
             }
             fatalError("Unexpected node type: \(type(of: node))")
         }
@@ -242,15 +242,15 @@ struct CodeGenerator {
 private func escapeForSwiftMultilineString(_ text: String) -> String {
     return
         text
-        .replacingOccurrences(of: "\\", with: "\\\\")
-        .replacingOccurrences(of: "\"\"\"", with: "\\\"\\\"\\\"")
-        .replacingOccurrences(of: "\\\\(", with: "\\(")
+        .replacingOccurrences(of: #"\"#, with: #"\\"#)
+        .replacingOccurrences(of: #"""""#, with: #"\"\"\""#)
+        .replacingOccurrences(of: #"\\("#, with: #"\("#)
 }
 
 /// Returns `template`'s `\(file)` and `\(line)` placeholders replaced by `filename` and `line`.
 private func formatSourceLocation(_ template: String, filename: String, line: Int) -> String {
     return
         template
-        .replacingOccurrences(of: "\\(file)", with: filename)
-        .replacingOccurrences(of: "\\(line)", with: "\(line)")
+        .replacingOccurrences(of: #"\(file)"#, with: filename)
+        .replacingOccurrences(of: #"\(line)"#, with: "\(line)")
 }

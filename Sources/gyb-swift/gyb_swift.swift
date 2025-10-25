@@ -85,7 +85,7 @@ struct GYBSwift: ParsableCommand {
             Line directive format string with \\(file) and \\(line) placeholders.
             Example: '#sourceLocation(file: "\\(file)", line: \\(line))'
             """)
-    var lineDirective: String = "#sourceLocation(file: \"\\(file)\", line: \\(line))"
+    var lineDirective: String = #"#sourceLocation(file: "\(file)", line: \(line))"#
 
     @Flag(help: "Dump the parsed template AST to stdout")
     var dump: Bool = false
