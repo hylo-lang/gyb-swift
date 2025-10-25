@@ -8,16 +8,22 @@ import SwiftSyntax
 struct TemplateToken: Equatable {
     /// The type of token.
     enum Kind: Equatable {
+        /// Literal text to output as-is.
         case literal
-        case substitutionOpen  // ${...}
-        case gybLines  // %-lines (including % }, % } else {, etc.)
-        case gybBlock  // %{...}%
-        case symbol  // %% or $$
+        /// A ${...} substitution expression.
+        case substitutionOpen
+        /// One or more %-lines of Swift code.
+        case gybLines
+        /// A %{...}% code block.
+        case gybBlock
+        /// An escaped symbol (%% or $$).
+        case symbol
     }
 
+    /// The token type.
     let kind: Kind
+    /// The token's text in the original template, preserving position via `startIndex`.
     let text: Substring
-    // Note: text.startIndex gives position in original template
 
     // Custom equality that compares text content, not indices
     static func == (lhs: TemplateToken, rhs: TemplateToken) -> Bool {
@@ -28,9 +34,11 @@ struct TemplateToken: Equatable {
 // MARK: - Template Tokenization
 
 /// Tokenizes template text into literal text, substitutions, code blocks, code lines, and symbols.
-// Note: The Python version uses a complex regex (tokenize_re). The Swift version uses
-// a character-by-character state machine which is more maintainable and handles Swift syntax correctly.
+///
+/// Note: The Python version uses a complex regex (tokenize_re). The Swift version uses
+/// a character-by-character state machine which is more maintainable and handles Swift syntax correctly.
 struct TemplateTokens: Sequence, IteratorProtocol {
+    /// The unconsumed portion of the template text.
     private var remainingText: Substring
 
     init(text: String) {

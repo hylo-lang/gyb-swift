@@ -5,8 +5,11 @@ import Foundation
 
 /// Errors that can occur during template execution.
 enum GYBError: Error, CustomStringConvertible {
+    /// Generated Swift code failed to compile, with compiler output.
     case compilationFailed(String)
+    /// Compiled program failed during execution, with error output.
     case executionFailed(String)
+    /// Template parsing failed, with error description.
     case parseError(String)
 
     var description: String {
@@ -25,11 +28,16 @@ enum GYBError: Error, CustomStringConvertible {
 
 /// Generates Swift code from AST nodes with consistent configuration.
 struct CodeGenerator {
+    /// Original template text for source location tracking.
     let templateText: String
+    /// Template filename for source location directives.
     let filename: String
+    /// Line directive format with `\(file)` and `\(line)` placeholders.
     let lineDirective: String
+    /// Whether to emit source location directives in generated code.
     let emitSourceLocation: Bool
 
+    /// Precomputed line start positions for efficient line number calculation.
     private let lineStarts: [String.Index]
 
     init(

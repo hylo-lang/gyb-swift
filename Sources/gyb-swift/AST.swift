@@ -9,6 +9,7 @@ protocol ASTNode: CustomStringConvertible {}
 
 /// Literal text from the template.
 struct LiteralNode: ASTNode {
+    /// The literal text content.
     let text: Substring
 
     var description: String {
@@ -20,6 +21,7 @@ struct LiteralNode: ASTNode {
 
 /// Swift code to be executed (from %-lines or %{...}% blocks).
 struct CodeNode: ASTNode {
+    /// The Swift code content.
     let code: Substring
 
     var description: String {
@@ -31,6 +33,7 @@ struct CodeNode: ASTNode {
 
 /// A ${...} expression whose result is converted to text and inserted into the output.
 struct SubstitutionNode: ASTNode {
+    /// The Swift expression to evaluate.
     let expression: Substring
 
     var description: String {
@@ -41,8 +44,10 @@ struct SubstitutionNode: ASTNode {
 // MARK: - Block Node (Top-Level Container Only)
 
 /// Top-level container for template nodes.
+///
 /// Note: This is just a container; nesting is handled by Swift's compiler, not by the parser.
 struct BlockNode: ASTNode {
+    /// The child nodes in this block.
     let children: [ASTNode]
 
     init(children: [ASTNode]) {
@@ -67,7 +72,9 @@ private func extractCodeFromBlockToken(_ token: Substring) -> Substring {
 
 /// Maintains parsing state while converting templates to AST.
 struct ParseContext {
+    /// Template source filename for error reporting.
     let filename: String
+    /// The complete template text being parsed.
     let templateText: String
 
     init(filename: String, text: String) {
