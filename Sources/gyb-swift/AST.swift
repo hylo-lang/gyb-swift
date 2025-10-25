@@ -41,23 +41,12 @@ struct SubstitutionNode: ASTNode {
     }
 }
 
-// MARK: - Block Node (Top-Level Container Only)
+// MARK: - AST
 
-/// Top-level container for template nodes.
+/// A parsed template represented as a sequence of nodes.
 ///
-/// Note: This is just a container; nesting is handled by Swift's compiler, not by the parser.
-struct BlockNode: ASTNode {
-    /// The child nodes in this block.
-    let children: [ASTNode]
-
-    init(children: [ASTNode]) {
-        self.children = children
-    }
-
-    var description: String {
-        "Block: [\n" + children.map { "  \($0.description)\n" }.joined() + "]"
-    }
-}
+/// Note: Nesting is handled by Swift's compiler, not by the parser.
+typealias AST = [ASTNode]
 
 // MARK: - Helper Functions
 
@@ -120,8 +109,7 @@ struct ParseContext {
 }
 
 /// Returns an AST from template `text`.
-func parseTemplate(filename: String, text: String) throws -> BlockNode {
+func parseTemplate(filename: String, text: String) throws -> AST {
     var context = ParseContext(filename: filename, text: text)
-    let nodes = try context.parseNodes()
-    return BlockNode(children: nodes)
+    return try context.parseNodes()
 }

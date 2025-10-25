@@ -76,9 +76,7 @@ struct CodeGenerator {
     }
 
     /// Returns a complete Swift program for `ast` with `bindings`.
-    func generateCompleteProgram(
-        _ ast: BlockNode, bindings: [String: Any] = [:]
-    ) -> String {
+    func generateCompleteProgram(_ ast: AST, bindings: [String: Any] = [:]) -> String {
         // Generate bindings code
         let bindingsCode =
             bindings
@@ -87,7 +85,7 @@ struct CodeGenerator {
             .joined(separator: "\n")
 
         // Generate template code
-        let templateCode = generateCode(for: ast.children)
+        let templateCode = generateCode(for: ast)
 
         return """
             import Foundation
@@ -102,7 +100,7 @@ struct CodeGenerator {
     }
 
     /// Executes `ast` with `bindings` by compiling and running generated Swift code.
-    func execute(_ ast: BlockNode, bindings: [String: Any] = [:]) throws -> String {
+    func execute(_ ast: AST, bindings: [String: Any] = [:]) throws -> String {
         // Generate complete Swift program without source location directives
         let executionGenerator = CodeGenerator(
             templateText: templateText,

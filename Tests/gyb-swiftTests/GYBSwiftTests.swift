@@ -370,8 +370,8 @@ func parse_literalTemplate() throws {
     let text = "Hello, World!"
     let ast = try parseTemplate(filename: "test", text: text)
 
-    #expect(ast.children.count == 1)
-    #expect(ast.children[0] is LiteralNode)
+    #expect(ast.count == 1)
+    #expect(ast[0] is LiteralNode)
 }
 
 @Test("parse template with escaped symbols")
@@ -379,7 +379,7 @@ func parse_templateWithEscapedSymbols() throws {
     let text = "$$dollar and %%percent"
     let ast = try parseTemplate(filename: "test", text: text)
 
-    #expect(ast.children.count >= 1)
+    #expect(ast.count >= 1)
 }
 
 @Test("parse substitution")
@@ -387,8 +387,8 @@ func parse_substitution() throws {
     let text = "${x}"
     let ast = try parseTemplate(filename: "test", text: text)
 
-    #expect(ast.children.count == 1)
-    #expect(ast.children[0] is SubstitutionNode)
+    #expect(ast.count == 1)
+    #expect(ast[0] is SubstitutionNode)
 }
 
 @Test("parse code block")
@@ -396,8 +396,8 @@ func parse_codeBlock() throws {
     let text = "%{ let x = 42 }%"
     let ast = try parseTemplate(filename: "test", text: text)
 
-    #expect(ast.children.count == 1)
-    #expect(ast.children[0] is CodeNode)
+    #expect(ast.count == 1)
+    #expect(ast[0] is CodeNode)
 }
 
 // MARK: - Basic Execution Tests
@@ -474,10 +474,10 @@ func ast_structure() throws {
     let text = "Text ${x} more text"
     let ast = try parseTemplate(filename: "test", text: text)
 
-    #expect(ast.children.count >= 1)
+    #expect(ast.count >= 1)
 
     var hasSubstitution = false
-    for child in ast.children {
+    for child in ast {
         if child is SubstitutionNode {
             hasSubstitution = true
         }
@@ -542,8 +542,8 @@ func astNode_creation() {
     let subst = SubstitutionNode(expression: "x")
     #expect(subst.expression == "x")
 
-    let block = BlockNode(children: [literal])
-    #expect(block.children.count == 1)
+    let ast: AST = [literal]
+    #expect(ast.count == 1)
 }
 
 // MARK: - Integration Tests
