@@ -92,7 +92,7 @@ func tokenize_codeBlock() {
     let tokens = Array(TemplateTokens(text: "%{ let x = 42 }%"))
     
     let expected = [
-        token(.gybBlockOpen, "%{ let x = 42 }%")
+        token(.gybBlock, "%{ let x = 42 }%")
     ]
     #expect(tokens == expected)
 }
@@ -105,7 +105,7 @@ func codeBlock_delimiterInString() {
     let tokens = Array(TemplateTokens(text: #"%{ let msg = "Error: }% not allowed" }%Done"#))
     
     #expect(tokens.count == 2)
-    #expect(tokens[0].kind == .gybBlockOpen)
+    #expect(tokens[0].kind == .gybBlock)
     #expect(tokens[0].text == #"%{ let msg = "Error: }% not allowed" }%"#)
     #expect(tokens[1].kind == .literal)
     #expect(tokens[1].text == "Done")
@@ -130,7 +130,7 @@ func nestedStrings_withDelimiters() {
     let tokens = Array(TemplateTokens(text: text))
     
     #expect(tokens.count == 1)
-    #expect(tokens[0].kind == .gybBlockOpen)
+    #expect(tokens[0].kind == .gybBlock)
     #expect(tokens[0].text == #"%{ let a = "first }% here"; let b = "second }% there" }%"#)
 }
 
@@ -156,7 +156,7 @@ func codeBlock_withClosure() {
     let tokens = Array(TemplateTokens(text: text))
     
     #expect(tokens.count == 2)
-    #expect(tokens[0].kind == .gybBlockOpen)
+    #expect(tokens[0].kind == .gybBlock)
     #expect(tokens[0].text == #"%{ items.forEach { print($0) } }%"#)
     #expect(tokens[1].text == "Done")
 }
@@ -167,7 +167,7 @@ func codeBlock_withDictionary() {
     let tokens = Array(TemplateTokens(text: text))
     
     #expect(tokens.count == 2)
-    #expect(tokens[0].kind == .gybBlockOpen)
+    #expect(tokens[0].kind == .gybBlock)
     #expect(tokens[0].text == #"%{ let dict = ["key": "value"]; let x = dict["key"] }%"#)
     #expect(tokens[1].text == "After")
 }
@@ -185,7 +185,7 @@ func codeBlock_nestedControlStructures() {
     let tokens = Array(TemplateTokens(text: text))
     
     #expect(tokens.count == 2)
-    #expect(tokens[0].kind == .gybBlockOpen)
+    #expect(tokens[0].kind == .gybBlock)
     #expect(tokens[0].text == #"""
     %{ if true {
         let dict = ["a": 1]
@@ -203,7 +203,7 @@ func codeBlock_withGenerics() {
     let tokens = Array(TemplateTokens(text: text))
     
     #expect(tokens.count == 2)
-    #expect(tokens[0].kind == .gybBlockOpen)
+    #expect(tokens[0].kind == .gybBlock)
     #expect(tokens[0].text == #"%{ let arr: Array<[String: Int]> = [] }%"#)
     #expect(tokens[1].text == "Text")
 }
@@ -214,7 +214,7 @@ func codeBlock_trailingClosure() {
     let tokens = Array(TemplateTokens(text: text))
     
     #expect(tokens.count == 2)
-    #expect(tokens[0].kind == .gybBlockOpen)
+    #expect(tokens[0].kind == .gybBlock)
     #expect(tokens[0].text == #"%{ let result = numbers.map { $0 * 2 } }%"#)
     #expect(tokens[1].text == "End")
 }
@@ -312,7 +312,7 @@ and %-lines:
         token(.literal, "This is literal stuff "),
         token(.substitutionOpen, "${x}"),
         token(.literal, "\n"),
-        token(.gybBlockOpen, "%{ let code = 1 }%\n"),  // Includes newline
+        token(.gybBlock, "%{ let code = 1 }%\n"),  // Includes newline
         token(.literal, "and "),
         token(.gybLines, "%-lines:"),  // "%-lines:" starts with % so treated as %-line
         token(.gybLines, "% let x = 1"),

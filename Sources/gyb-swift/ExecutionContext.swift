@@ -23,29 +23,27 @@ enum GYBError: Error, CustomStringConvertible {
 
 // MARK: - AST to Swift Code Conversion
 
-/// Returns the start position of `nodes`'s first element, if any.
-private func sourceLocationIndex(for nodes: [ASTNode]) -> String.Index? {
-    guard let first = nodes.first else { return nil }
+/// Returns the start position of `nodes`'s first element.
+private func sourceLocationIndex(for nodes: [ASTNode]) -> String.Index {
+    let first = nodes.first!
     
     if let literal = first as? LiteralNode {
         return literal.text.startIndex
     } else if let substitution = first as? SubstitutionNode {
         return substitution.expression.startIndex
     }
-    return nil
+    fatalError("Unexpected node type: \(type(of: first))")
 }
 
 /// Returns `nodes`'s text content as strings, with substitutions formatted as `\(expression)`.
 private func textContent(from nodes: [ASTNode]) -> [String] {
-    return nodes.compactMap { node in
-        switch node {
-        case let literal as LiteralNode:
+    return nodes.map { node in
+        if let literal = node as? LiteralNode {
             return String(literal.text)
-        case let substitution as SubstitutionNode:
+        } else if let substitution = node as? SubstitutionNode {
             return "\\(\(substitution.expression))"
-        default:
-            return nil
         }
+        fatalError("Unexpected node type: \(type(of: node))")
     }
 }
 
@@ -64,7 +62,7 @@ private func formatSourceLocation(_ template: String, filename: String, line: In
         .replacingOccurrences(of: "\\(line)", with: "\(line)")
 }
 
-/// Returns a Swift print statement outputting `nodes`'s combined text, prefixed by a source location directive when `emitSourceLocation` is true, or `nil` if `nodes` produces no output.
+/// Returns a Swift print statement outputting `nodes`'s combined text, prefixed by a source location directive when `emitSourceLocation` is true.
 private func printStatement(
     for nodes: [ASTNode],
     templateText: String,
@@ -72,19 +70,13 @@ private func printStatement(
     filename: String,
     lineDirective: String,
     emitSourceLocation: Bool
-) -> String? {
-    guard !nodes.isEmpty else { return nil }
-    
-    let parts = textContent(from: nodes)
-    guard !parts.isEmpty else { return nil }
-    
-    let combined = parts.joined()
-    guard !combined.isEmpty else { return nil }
-    
+) -> String {
+    let combined = textContent(from: nodes).joined()
     var result: [String] = []
     
     // Emit source location directive if requested
-    if emitSourceLocation, !filename.isEmpty, let index = sourceLocationIndex(for: nodes) {
+    if emitSourceLocation, !filename.isEmpty {
+        let index = sourceLocationIndex(for: nodes)
         let lineNumber = getLineNumber(for: index, in: templateText, lineStarts: lineStarts)
         let directive = formatSourceLocation(lineDirective, filename: filename, line: lineNumber)
         result.append(directive)
@@ -109,14 +101,14 @@ func astNodesToSwiftCode(
     lineDirective: String = "#sourceLocation(file: \"\\(file)\", line: \\(line))",
     emitSourceLocation: Bool = true
 ) -> String {
-    let lineStarts = !templateText.isEmpty ? getLineStarts(templateText) : []
+    let lineStarts = getLineStarts(templateText)
     
     // Group consecutive output nodes together; keep code nodes separate
     let chunks = nodes.chunked { prev, curr in
         isOutputNode(prev) && isOutputNode(curr)
     }
     
-    let lines = chunks.compactMap { chunk -> String? in
+    let lines = chunks.map { chunk -> String in
         let chunkArray = Array(chunk)
         
         // Code nodes are emitted directly
@@ -135,7 +127,7 @@ func astNodesToSwiftCode(
         )
     }
     
-    return lines.filter { !$0.isEmpty }.joined(separator: "\n")
+    return lines.joined(separator: "\n")
 }
 
 // MARK: - Template Execution

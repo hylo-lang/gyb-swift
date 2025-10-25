@@ -9,10 +9,9 @@ struct TemplateToken: Equatable {
     /// The type of token.
     enum Kind: Equatable {
         case literal
-        case substitutionOpen  // ${
+        case substitutionOpen  // ${...}
         case gybLines          // %-lines (including % }, % } else {, etc.)
-        case gybBlockOpen      // %{
-        case gybBlockClose     // }%
+        case gybBlock          // %{...}%
         case symbol            // %% or $$
     }
     
@@ -146,7 +145,7 @@ struct TemplateTokens: Sequence, IteratorProtocol {
                 
                 let tokenText = remainingText[..<endIndex]
                 remainingText = remainingText[endIndex...]
-                return TemplateToken(kind: .gybBlockOpen, text: tokenText)
+                return TemplateToken(kind: .gybBlock, text: tokenText)
             }
         }
         

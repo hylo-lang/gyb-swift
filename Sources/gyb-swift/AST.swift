@@ -78,10 +78,10 @@ struct ParseContext {
     /// Returns AST nodes parsed from the template.
     /// Simply converts each token to a node - no nesting logic.
     mutating func parseNodes() throws -> [ASTNode] {
-        return TemplateTokens(text: templateText).compactMap { token in
+        return TemplateTokens(text: templateText).map { token in
             switch token.kind {
             case .literal:
-                return token.text.isEmpty ? nil : LiteralNode(text: token.text)
+                return LiteralNode(text: token.text)
                 
             case .substitutionOpen:
                 // Extract expression between ${ and }
@@ -91,13 +91,9 @@ struct ParseContext {
                 // Extract code from %-lines
                 return CodeNode(code: extractCodeFromLines(token.text))
                 
-            case .gybBlockOpen:
+            case .gybBlock:
                 // Extract code between %{ and }%
                 return CodeNode(code: extractCodeFromBlockToken(token.text))
-                
-            case .gybBlockClose:
-                // }% - should not appear in isolation (tokenizer handles it)
-                return nil
                 
             case .symbol:
                 // %% or $$ becomes single % or $
