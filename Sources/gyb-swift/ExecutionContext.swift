@@ -23,9 +23,113 @@ enum GYBError: Error, CustomStringConvertible {
 
 // MARK: - AST to Swift Code Conversion
 
+/// Returns the source location index for generating line directives.
+/// - Parameter nodes: Nodes to examine for source location
+/// - Returns: The index into the template text, if available
+private func sourceLocationIndex(for nodes: [ASTNode]) -> String.Index? {
+    guard let first = nodes.first else { return nil }
+    
+    if let literal = first as? LiteralNode {
+        return literal.text.startIndex
+    } else if let substitution = first as? SubstitutionNode {
+        return substitution.expression.startIndex
+    }
+    return nil
+}
+
+/// Returns the text content from template output nodes.
+/// - Parameter nodes: Literal and substitution nodes to convert to text
+/// - Returns: Array of text strings with interpolations marked
+private func textContent(from nodes: [ASTNode]) -> [String] {
+    return nodes.compactMap { node in
+        switch node {
+        case let literal as LiteralNode:
+            return String(literal.text)
+        case let substitution as SubstitutionNode:
+            return "\\(\(substitution.expression))"
+        default:
+            return nil
+        }
+    }
+}
+
+/// Returns text escaped for use in Swift multiline string literals.
+/// - Parameter text: Raw text to escape
+/// - Returns: Text with backslashes, triple-quotes escaped, and interpolation markers preserved
+private func escapeForSwiftMultilineString(_ text: String) -> String {
+    return text
+        .replacingOccurrences(of: "\\", with: "\\\\")
+        .replacingOccurrences(of: "\"\"\"", with: "\\\"\\\"\\\"")
+        .replacingOccurrences(of: "\\\\(", with: "\\(")
+}
+
+/// Formats a source location directive by substituting file and line placeholders.
+/// - Parameters:
+///   - template: Line directive template with \(file) and \(line) placeholders
+///   - filename: Source filename to substitute
+///   - line: Line number to substitute
+/// - Returns: Formatted source location directive
+private func formatSourceLocation(_ template: String, filename: String, line: Int) -> String {
+    return template
+        .replacingOccurrences(of: "\\(file)", with: filename)
+        .replacingOccurrences(of: "\\(line)", with: "\(line)")
+}
+
+/// Returns a Swift print statement for template output nodes.
+/// - Parameters:
+///   - nodes: Literal and substitution nodes to emit as output
+///   - templateText: Original template text for line number computation
+///   - lineStarts: Pre-computed line start indices
+///   - filename: Source filename for line directives
+///   - lineDirective: Line directive format template
+///   - emitSourceLocation: Whether to include source location directives
+/// - Returns: Swift print statement with optional source location directive, or nil if nodes produce no output
+private func printStatement(
+    for nodes: [ASTNode],
+    templateText: String,
+    lineStarts: [String.Index],
+    filename: String,
+    lineDirective: String,
+    emitSourceLocation: Bool
+) -> String? {
+    guard !nodes.isEmpty else { return nil }
+    
+    let parts = textContent(from: nodes)
+    guard !parts.isEmpty else { return nil }
+    
+    let combined = parts.joined()
+    guard !combined.isEmpty else { return nil }
+    
+    var result: [String] = []
+    
+    // Emit source location directive if requested
+    if emitSourceLocation, !filename.isEmpty, let index = sourceLocationIndex(for: nodes) {
+        let lineNumber = getLineNumber(for: index, in: templateText, lineStarts: lineStarts)
+        let directive = formatSourceLocation(lineDirective, filename: filename, line: lineNumber)
+        result.append(directive)
+    }
+    
+    let escaped = escapeForSwiftMultilineString(combined)
+    result.append("print(\"\"\"\n\(escaped)\n\"\"\", terminator: \"\")")
+    
+    return result.joined(separator: "\n")
+}
+
+/// Returns whether a node represents template output (literal text or substitution).
+/// - Parameter node: Node to examine
+/// - Returns: true if node is a literal or substitution
+private func isOutputNode(_ node: ASTNode) -> Bool {
+    return node is LiteralNode || node is SubstitutionNode
+}
+
 /// Converts an array of AST nodes to Swift code.
-/// Batches consecutive literals and substitutions into print statements.
-/// Code nodes are emitted directly - Swift's compiler handles the nesting.
+/// - Parameters:
+///   - nodes: Template AST nodes to convert
+///   - templateText: Original template text for line number computation
+///   - filename: Source filename for line directives
+///   - lineDirective: Line directive format template with \(file) and \(line) placeholders
+///   - emitSourceLocation: Whether to include source location directives
+/// - Returns: Swift source code as a string
 func astNodesToSwiftCode(
     _ nodes: [ASTNode],
     templateText: String = "",
@@ -33,81 +137,30 @@ func astNodesToSwiftCode(
     lineDirective: String = "#sourceLocation(file: \"\\(file)\", line: \\(line))",
     emitSourceLocation: Bool = true
 ) -> String {
-    // Pre-compute line starts for line number extraction
     let lineStarts = !templateText.isEmpty ? getLineStarts(templateText) : []
     
-    // Helper to create a print statement for batched text nodes
-    func makePrintStatement(for chunk: [ASTNode]) -> String? {
-        guard !chunk.isEmpty else { return nil }
-        
-        // Get start index from first node for line directive
-        let firstIndex: String.Index? = {
-            if let literal = chunk.first as? LiteralNode {
-                return literal.text.startIndex
-            } else if let substitution = chunk.first as? SubstitutionNode {
-                return substitution.expression.startIndex
-            }
-            return nil
-        }()
-        
-        // Build text content with interpolations
-        let textParts = chunk.compactMap { node -> String? in
-            switch node {
-            case let literal as LiteralNode:
-                return String(literal.text)
-            case let substitution as SubstitutionNode:
-                return "\\(\(substitution.expression))"
-            default:
-                return nil
-            }
-        }
-        
-        guard !textParts.isEmpty else { return nil }
-        let combined = textParts.joined()
-        guard !combined.isEmpty else { return nil }
-        
-        var result: [String] = []
-        
-        // Emit source location if needed
-        if emitSourceLocation, !filename.isEmpty, let index = firstIndex {
-            let line = getLineNumber(for: index, in: templateText, lineStarts: lineStarts)
-            let directive = lineDirective
-                .replacingOccurrences(of: "\\(file)", with: filename)
-                .replacingOccurrences(of: "\\(line)", with: "\(line)")
-            result.append(directive)
-        }
-        
-        // Escape """ and \ for multiline string literal
-        let content = combined
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"\"\"", with: "\\\"\\\"\\\"")
-            // Unescape our interpolation markers back to single backslash
-            .replacingOccurrences(of: "\\\\(", with: "\\(")
-        
-        result.append("print(\"\"\"\n\(content)\n\"\"\", terminator: \"\")")
-        return result.joined(separator: "\n")
-    }
-    
-    // Chunk nodes by type: consecutive literals/substitutions vs code nodes
+    // Group consecutive output nodes together; keep code nodes separate
     let chunks = nodes.chunked { prev, curr in
-        // Group consecutive literals and substitutions together
-        // Separate when hitting a code node or switching from code to text
-        let prevIsText = prev is LiteralNode || prev is SubstitutionNode
-        let currIsText = curr is LiteralNode || curr is SubstitutionNode
-        return prevIsText && currIsText
+        isOutputNode(prev) && isOutputNode(curr)
     }
     
-    // Process each chunk
     let lines = chunks.compactMap { chunk -> String? in
         let chunkArray = Array(chunk)
         
-        // If chunk starts with a code node, emit it directly
+        // Code nodes are emitted directly
         if let code = chunkArray.first as? CodeNode {
             return String(code.code)
         }
         
-        // Otherwise, create a print statement for text nodes
-        return makePrintStatement(for: chunkArray)
+        // Output nodes are batched into print statements
+        return printStatement(
+            for: chunkArray,
+            templateText: templateText,
+            lineStarts: lineStarts,
+            filename: filename,
+            lineDirective: lineDirective,
+            emitSourceLocation: emitSourceLocation
+        )
     }
     
     return lines.filter { !$0.isEmpty }.joined(separator: "\n")
