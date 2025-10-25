@@ -23,9 +23,7 @@ enum GYBError: Error, CustomStringConvertible {
 
 // MARK: - AST to Swift Code Conversion
 
-/// Returns the source location index for generating line directives.
-/// - Parameter nodes: Nodes to examine for source location
-/// - Returns: The index into the template text, if available
+/// Returns the start position of `nodes`'s first element, if any.
 private func sourceLocationIndex(for nodes: [ASTNode]) -> String.Index? {
     guard let first = nodes.first else { return nil }
     
@@ -37,9 +35,7 @@ private func sourceLocationIndex(for nodes: [ASTNode]) -> String.Index? {
     return nil
 }
 
-/// Returns the text content from template output nodes.
-/// - Parameter nodes: Literal and substitution nodes to convert to text
-/// - Returns: Array of text strings with interpolations marked
+/// Returns `nodes`'s text content as strings, with substitutions formatted as `\(expression)`.
 private func textContent(from nodes: [ASTNode]) -> [String] {
     return nodes.compactMap { node in
         switch node {
@@ -53,9 +49,7 @@ private func textContent(from nodes: [ASTNode]) -> [String] {
     }
 }
 
-/// Returns text escaped for use in Swift multiline string literals.
-/// - Parameter text: Raw text to escape
-/// - Returns: Text with backslashes, triple-quotes escaped, and interpolation markers preserved
+/// Returns `text` escaped for Swift multiline string literals, preserving `\(...)` interpolations.
 private func escapeForSwiftMultilineString(_ text: String) -> String {
     return text
         .replacingOccurrences(of: "\\", with: "\\\\")
@@ -63,27 +57,14 @@ private func escapeForSwiftMultilineString(_ text: String) -> String {
         .replacingOccurrences(of: "\\\\(", with: "\\(")
 }
 
-/// Formats a source location directive by substituting file and line placeholders.
-/// - Parameters:
-///   - template: Line directive template with \(file) and \(line) placeholders
-///   - filename: Source filename to substitute
-///   - line: Line number to substitute
-/// - Returns: Formatted source location directive
+/// Returns `template`'s `\(file)` and `\(line)` placeholders replaced by `filename` and `line`.
 private func formatSourceLocation(_ template: String, filename: String, line: Int) -> String {
     return template
         .replacingOccurrences(of: "\\(file)", with: filename)
         .replacingOccurrences(of: "\\(line)", with: "\(line)")
 }
 
-/// Returns a Swift print statement for template output nodes.
-/// - Parameters:
-///   - nodes: Literal and substitution nodes to emit as output
-///   - templateText: Original template text for line number computation
-///   - lineStarts: Pre-computed line start indices
-///   - filename: Source filename for line directives
-///   - lineDirective: Line directive format template
-///   - emitSourceLocation: Whether to include source location directives
-/// - Returns: Swift print statement with optional source location directive, or nil if nodes produce no output
+/// Returns a Swift print statement outputting `nodes`'s combined text, prefixed by a source location directive when `emitSourceLocation` is true, or `nil` if `nodes` produces no output.
 private func printStatement(
     for nodes: [ASTNode],
     templateText: String,
@@ -115,21 +96,12 @@ private func printStatement(
     return result.joined(separator: "\n")
 }
 
-/// Returns whether a node represents template output (literal text or substitution).
-/// - Parameter node: Node to examine
-/// - Returns: true if node is a literal or substitution
+/// Returns whether `node` represents template output.
 private func isOutputNode(_ node: ASTNode) -> Bool {
     return node is LiteralNode || node is SubstitutionNode
 }
 
-/// Converts an array of AST nodes to Swift code.
-/// - Parameters:
-///   - nodes: Template AST nodes to convert
-///   - templateText: Original template text for line number computation
-///   - filename: Source filename for line directives
-///   - lineDirective: Line directive format template with \(file) and \(line) placeholders
-///   - emitSourceLocation: Whether to include source location directives
-/// - Returns: Swift source code as a string
+/// Returns Swift code executing `nodes`, batching consecutive output nodes into print statements.
 func astNodesToSwiftCode(
     _ nodes: [ASTNode],
     templateText: String = "",
