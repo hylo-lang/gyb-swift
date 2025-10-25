@@ -1,4 +1,5 @@
 import Foundation
+import Algorithms
 
 // MARK: - Errors
 
@@ -32,69 +33,84 @@ func astNodesToSwiftCode(
     lineDirective: String = "#sourceLocation(file: \"\\(file)\", line: \\(line))",
     emitSourceLocation: Bool = true
 ) -> String {
-    var result: [String] = []
-    var textBatch: [String] = []  // Accumulate literal text with \() interpolations
-    var textBatchIndex: String.Index?  // Start index of first node in batch
-    
     // Pre-compute line starts for line number extraction
     let lineStarts = !templateText.isEmpty ? getLineStarts(templateText) : []
     
-    func flushTextBatch() {
-        guard !textBatch.isEmpty else { return }
-        let combined = textBatch.joined()
-        if !combined.isEmpty {
-            // Emit source location before the print statement
-            if emitSourceLocation, !filename.isEmpty, let index = textBatchIndex {
-                let line = getLineNumber(for: index, in: templateText, lineStarts: lineStarts)
-                let directive = lineDirective
-                    .replacingOccurrences(of: "\\(file)", with: filename)
-                    .replacingOccurrences(of: "\\(line)", with: "\(line)")
-                result.append(directive)
+    // Helper to create a print statement for batched text nodes
+    func makePrintStatement(for chunk: [ASTNode]) -> String? {
+        guard !chunk.isEmpty else { return nil }
+        
+        // Get start index from first node for line directive
+        let firstIndex: String.Index? = {
+            if let literal = chunk.first as? LiteralNode {
+                return literal.text.startIndex
+            } else if let substitution = chunk.first as? SubstitutionNode {
+                return substitution.expression.startIndex
             }
-            
-            // Escape """ and \ for multiline string literal
-            let content = combined
-                .replacingOccurrences(of: "\\", with: "\\\\")
-                .replacingOccurrences(of: "\"\"\"", with: "\\\"\\\"\\\"")
-                // Unescape our interpolation markers back to single backslash
-                .replacingOccurrences(of: "\\\\(", with: "\\(")
-            
-            result.append("print(\"\"\"\n\(content)\n\"\"\", terminator: \"\")")
+            return nil
+        }()
+        
+        // Build text content with interpolations
+        let textParts = chunk.compactMap { node -> String? in
+            switch node {
+            case let literal as LiteralNode:
+                return String(literal.text)
+            case let substitution as SubstitutionNode:
+                return "\\(\(substitution.expression))"
+            default:
+                return nil
+            }
         }
-        textBatch.removeAll()
-        textBatchIndex = nil
+        
+        guard !textParts.isEmpty else { return nil }
+        let combined = textParts.joined()
+        guard !combined.isEmpty else { return nil }
+        
+        var result: [String] = []
+        
+        // Emit source location if needed
+        if emitSourceLocation, !filename.isEmpty, let index = firstIndex {
+            let line = getLineNumber(for: index, in: templateText, lineStarts: lineStarts)
+            let directive = lineDirective
+                .replacingOccurrences(of: "\\(file)", with: filename)
+                .replacingOccurrences(of: "\\(line)", with: "\(line)")
+            result.append(directive)
+        }
+        
+        // Escape """ and \ for multiline string literal
+        let content = combined
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"\"\"", with: "\\\"\\\"\\\"")
+            // Unescape our interpolation markers back to single backslash
+            .replacingOccurrences(of: "\\\\(", with: "\\(")
+        
+        result.append("print(\"\"\"\n\(content)\n\"\"\", terminator: \"\")")
+        return result.joined(separator: "\n")
     }
     
-    for node in nodes {
-        switch node {
-        case let literal as LiteralNode:
-            // Track start index for first node in batch
-            if textBatchIndex == nil {
-                textBatchIndex = literal.text.startIndex
-            }
-            // Add to text batch - will be escaped later
-            textBatch.append(String(literal.text))
-            
-        case let substitution as SubstitutionNode:
-            // Track start index for first node in batch
-            if textBatchIndex == nil {
-                textBatchIndex = substitution.expression.startIndex
-            }
-            // Add interpolation to text batch (with \\( to survive first escaping pass)
-            textBatch.append("\\(\(substitution.expression))")
-            
-        case let code as CodeNode:
-            // Flush any pending text, then emit code directly
-            flushTextBatch()
-            result.append(String(code.code))
-            
-        default:
-            break
-        }
+    // Chunk nodes by type: consecutive literals/substitutions vs code nodes
+    let chunks = nodes.chunked { prev, curr in
+        // Group consecutive literals and substitutions together
+        // Separate when hitting a code node or switching from code to text
+        let prevIsText = prev is LiteralNode || prev is SubstitutionNode
+        let currIsText = curr is LiteralNode || curr is SubstitutionNode
+        return prevIsText && currIsText
     }
     
-    flushTextBatch()
-    return result.filter { !$0.isEmpty }.joined(separator: "\n")
+    // Process each chunk
+    let lines = chunks.compactMap { chunk -> String? in
+        let chunkArray = Array(chunk)
+        
+        // If chunk starts with a code node, emit it directly
+        if let code = chunkArray.first as? CodeNode {
+            return String(code.code)
+        }
+        
+        // Otherwise, create a print statement for text nodes
+        return makePrintStatement(for: chunkArray)
+    }
+    
+    return lines.filter { !$0.isEmpty }.joined(separator: "\n")
 }
 
 // MARK: - Template Execution

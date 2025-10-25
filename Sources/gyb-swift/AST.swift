@@ -78,43 +78,32 @@ struct ParseContext {
     /// Returns AST nodes parsed from the template.
     /// Simply converts each token to a node - no nesting logic.
     mutating func parseNodes() throws -> [ASTNode] {
-        var nodes: [ASTNode] = []
-        var tokenIterator = TemplateTokens(text: templateText)
-        
-        while let token = tokenIterator.next() {
-            advance(to: token.text.startIndex)
-            let line = currentLine
-            
+        return TemplateTokens(text: templateText).compactMap { token in
             switch token.kind {
             case .literal:
-                if !token.text.isEmpty {
-                    nodes.append(LiteralNode(text: token.text, line: line))
-                }
+                return token.text.isEmpty ? nil : LiteralNode(text: token.text)
                 
             case .substitutionOpen:
                 // Extract expression between ${ and }
-                nodes.append(SubstitutionNode(expression: token.text.dropFirst(2).dropLast(), line: line))
+                return SubstitutionNode(expression: token.text.dropFirst(2).dropLast())
                 
             case .gybLines:
                 // Extract code from %-lines
-                let code = extractCodeFromLines(token.text)
-                nodes.append(CodeNode(code: code, line: line))
+                return CodeNode(code: extractCodeFromLines(token.text))
                 
             case .gybBlockOpen:
                 // Extract code between %{ and }%
-                nodes.append(CodeNode(code: extractCodeFromBlockToken(token.text), line: line))
+                return CodeNode(code: extractCodeFromBlockToken(token.text))
                 
             case .gybBlockClose:
                 // }% - should not appear in isolation (tokenizer handles it)
-                break
+                return nil
                 
             case .symbol:
                 // %% or $$ becomes single % or $
-                nodes.append(LiteralNode(text: token.text.prefix(1), line: line))
+                return LiteralNode(text: token.text.prefix(1))
             }
         }
-        
-        return nodes
     }
     
     /// Returns executable code from %-lines with leading % and indentation removed.
