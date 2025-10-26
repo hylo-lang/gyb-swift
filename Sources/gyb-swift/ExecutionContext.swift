@@ -6,20 +6,16 @@ import Foundation
 /// Errors that can occur during template execution.
 enum GYBError: Error, CustomStringConvertible {
     /// Generated Swift code failed to compile, with compiler output.
-    case compilationFailed(String)
+    case compilationFailed(filename: String, compilerOutput: String)
     /// Compiled program failed during execution, with error output.
-    case executionFailed(String)
-    /// Template parsing failed, with error description.
-    case parseError(String)
+    case executionFailed(filename: String, errorOutput: String)
 
     var description: String {
         switch self {
-        case .compilationFailed(let message):
-            return "Compilation failed: \(message)"
-        case .executionFailed(let message):
-            return "Execution failed: \(message)"
-        case .parseError(let message):
-            return "Parse error: \(message)"
+        case .compilationFailed(let filename, let compilerOutput):
+            return "Error compiling generated code from \(filename)\n\(compilerOutput)"
+        case .executionFailed(let filename, let errorOutput):
+            return "Error executing generated code from \(filename)\n\(errorOutput)"
         }
     }
 }
@@ -134,9 +130,9 @@ struct CodeGenerator {
 
         if compileProcess.terminationStatus != 0 {
             let errorData = compileErrorPipe.fileHandleForReading.readDataToEndOfFile()
-            let errorMessage =
+            let compilerOutput =
                 String(data: errorData, encoding: .utf8) ?? "Unknown compilation error"
-            throw GYBError.compilationFailed(errorMessage)
+            throw GYBError.compilationFailed(filename: filename, compilerOutput: compilerOutput)
         }
 
         // Execute
@@ -153,9 +149,8 @@ struct CodeGenerator {
 
         if runProcess.terminationStatus != 0 {
             let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-            let errorMessage =
-                String(data: errorData, encoding: .utf8) ?? "Unknown execution error"
-            throw GYBError.executionFailed(errorMessage)
+            let errorOutput = String(data: errorData, encoding: .utf8) ?? "Unknown execution error"
+            throw GYBError.executionFailed(filename: filename, errorOutput: errorOutput)
         }
 
         let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
@@ -202,9 +197,9 @@ struct CodeGenerator {
 
         let escaped = escapeForSwiftMultilineString(combined)
         result.append(
-          #"print(""""#
-            + "\n\(escaped)\n"
-            + #"""", terminator: "")"#)
+            #"print(""""#
+                + "\n\(escaped)\n"
+                + #"""", terminator: "")"#)
 
         return result.joined(separator: "\n")
     }
