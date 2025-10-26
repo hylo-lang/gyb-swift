@@ -26,7 +26,7 @@ func generateCode(
     _ text: String,
     bindings: [String: String] = [:],
     filename: String = "test.gyb",
-    lineDirective: String = "//# line \\(line) \"\\(file)\"",
+    lineDirective: String = #"//# line \(line) "\(file)""#,
     emitSourceLocation: Bool = true
 ) throws -> String {
     let ast = try parseTemplate(filename: filename, text: text)

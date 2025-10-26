@@ -201,7 +201,10 @@ struct CodeGenerator {
         }
 
         let escaped = escapeForSwiftMultilineString(combined)
-        result.append("print(\"\"\"\n\(escaped)\n\"\"\", terminator: \"\")")
+        result.append(
+          #"print(""""#
+            + "\n\(escaped)\n"
+            + #"""", terminator: "")"#)
 
         return result.joined(separator: "\n")
     }
