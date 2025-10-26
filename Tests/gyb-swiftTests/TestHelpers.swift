@@ -8,15 +8,12 @@ import Testing
 func execute(
     _ text: String,
     bindings: [String: String] = [:],
-    filename: String = "test",
-    lineDirective: String = ""
+    filename: String = "test"
 ) throws -> String {
     let ast = try parseTemplate(filename: filename, text: text)
     let generator = CodeGenerator(
         templateText: text,
-        filename: filename,
-        lineDirective: lineDirective,
-        emitSourceLocation: true
+        filename: filename
     )
     return try generator.execute(ast, bindings: bindings)
 }
@@ -26,15 +23,15 @@ func generateCode(
     _ text: String,
     bindings: [String: String] = [:],
     filename: String = "test.gyb",
-    lineDirective: String = #"//# line \(line) "\(file)""#,
-    emitSourceLocation: Bool = true
+    lineDirective: String = "",
+    emitLineDirectives: Bool = false
 ) throws -> String {
     let ast = try parseTemplate(filename: filename, text: text)
     let generator = CodeGenerator(
         templateText: text,
         filename: filename,
         lineDirective: lineDirective,
-        emitSourceLocation: emitSourceLocation
+        emitLineDirectives: emitLineDirectives
     )
     return generator.generateCompleteProgram(ast, bindings: bindings)
 }

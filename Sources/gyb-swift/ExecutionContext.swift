@@ -28,10 +28,10 @@ struct CodeGenerator {
     let templateText: String
     /// Template filename for source location directives.
     let filename: String
-    /// Line directive format with `\(file)` and `\(line)` placeholders.
+    /// Line directive format for output with `\(file)` and `\(line)` placeholders, or empty to omit.
     let lineDirective: String
-    /// Whether to emit source location directives in generated code.
-    let emitSourceLocation: Bool
+    /// Whether to emit line directives in the template output.
+    let emitLineDirectives: Bool
 
     /// Precomputed line start positions for efficient line number calculation.
     private let lineStarts: [String.Index]
@@ -39,27 +39,37 @@ struct CodeGenerator {
     init(
         templateText: String,
         filename: String = "",
-        lineDirective: String = #"#sourceLocation(file: "\(file)", line: \(line))"#,
-        emitSourceLocation: Bool = true
+        lineDirective: String = "",
+        emitLineDirectives: Bool = false
     ) {
         self.templateText = templateText
         self.filename = filename
         self.lineDirective = lineDirective
-        self.emitSourceLocation = emitSourceLocation
+        self.emitLineDirectives = emitLineDirectives
         self.lineStarts = getLineStarts(templateText)
     }
 
-    /// Returns Swift code executing `nodes`, batching consecutive output nodes into print statements.
+    /// Returns Swift code executing `nodes`, batching consecutive nodes of the same type.
     func generateCode(for nodes: [ASTNode]) -> String {
-        // Group consecutive output nodes together; keep code nodes separate
+        // Group consecutive nodes: output nodes together, code nodes together
         let chunks = nodes.chunked { prev, curr in
-            isOutputNode(prev) && isOutputNode(curr)
+            (isOutputNode(prev) && isOutputNode(curr)) || (prev is CodeNode && curr is CodeNode)
         }
 
         let lines = chunks.map { chunk -> String in
-            // Code nodes are emitted directly
-            if let code = chunk.first as? CodeNode {
-                return String(code.code)
+            // Code nodes: emit with source location directive at the start
+            if let firstCode = chunk.first as? CodeNode {
+                let lineNumber =
+                    getLineNumber(
+                        for: firstCode.sourcePosition, in: templateText, lineStarts: lineStarts)
+                let sourceLocationDirective = formatSourceLocation(
+                    #"#sourceLocation(file: "\(file)", line: \(line))"#,
+                    filename: filename,
+                    line: lineNumber
+                )
+                // Concatenate all code from consecutive code nodes
+                let codeLines = chunk.compactMap { ($0 as? CodeNode)?.code }.map(String.init)
+                return sourceLocationDirective + "\n" + codeLines.joined(separator: "\n")
             }
 
             // Output nodes are batched into print statements
@@ -80,7 +90,7 @@ struct CodeGenerator {
         // Generate template code
         let templateCode = generateCode(for: ast)
 
-        return """
+        let code = """
             import Foundation
 
             // Bindings
@@ -90,18 +100,14 @@ struct CodeGenerator {
             \(templateCode)
 
             """
+
+        // Fix any misplaced #sourceLocation directives
+        return fixSourceLocationPlacement(code)
     }
 
     /// Executes `ast` with `bindings` by compiling and running generated Swift code.
     func execute(_ ast: AST, bindings: [String: String] = [:]) throws -> String {
-        // Generate complete Swift program without source location directives
-        let executionGenerator = CodeGenerator(
-            templateText: templateText,
-            filename: filename,
-            lineDirective: lineDirective,
-            emitSourceLocation: false
-        )
-        let swiftCode = executionGenerator.generateCompleteProgram(ast, bindings: bindings)
+        let swiftCode = generateCompleteProgram(ast, bindings: bindings)
 
         // Write to temporary file
         let tempDir = FileManager.default.temporaryDirectory
@@ -180,27 +186,39 @@ struct CodeGenerator {
         }
     }
 
-    /// Returns a Swift print statement outputting `nodes`'s combined text, prefixed by a source location directive when configured.
+    /// Returns a Swift print statement outputting `nodes`'s combined text.
+    ///
+    /// Always includes a `#sourceLocation` directive in the generated Swift code for error reporting.
+    /// Optionally prints line directives into the output when configured.
     private func printStatement(for nodes: AST.SubSequence) -> String {
         let combined = textContent(from: nodes).joined()
-        var result: [String] = []
+        var swiftCode: [String] = []
 
-        // Emit source location directive if requested
-        if emitSourceLocation {
-            let index = sourceLocationIndex(for: nodes)
-            let lineNumber = getLineNumber(for: index, in: templateText, lineStarts: lineStarts)
-            let directive = formatSourceLocation(
+        // Always emit #sourceLocation in the intermediate Swift code for error reporting
+        let index = sourceLocationIndex(for: nodes)
+        let lineNumber = getLineNumber(for: index, in: templateText, lineStarts: lineStarts)
+        let sourceLocationDirective = formatSourceLocation(
+            #"#sourceLocation(file: "\(file)", line: \(line))"#,
+            filename: filename,
+            line: lineNumber
+        )
+        swiftCode.append(sourceLocationDirective)
+
+        // Optionally print line directives into the output
+        var output = combined
+        if emitLineDirectives && !lineDirective.isEmpty {
+            let outputDirective = formatSourceLocation(
                 lineDirective, filename: filename, line: lineNumber)
-            result.append(directive)
+            output = outputDirective + "\n" + output
         }
 
-        let escaped = escapeForSwiftMultilineString(combined)
-        result.append(
+        let escaped = escapeForSwiftMultilineString(output)
+        swiftCode.append(
             #"print(""""#
                 + "\n\(escaped)\n"
                 + #"""", terminator: "")"#)
 
-        return result.joined(separator: "\n")
+        return swiftCode.joined(separator: "\n")
     }
 
     /// Returns whether `node` represents template output.

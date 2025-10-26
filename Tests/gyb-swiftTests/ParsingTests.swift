@@ -58,7 +58,7 @@ func astNode_creation() {
     let literal = LiteralNode(text: "hello")
     #expect(literal.text == "hello")
 
-    let code = CodeNode(code: "let x = 1")
+    let code = CodeNode(code: "let x = 1", sourcePosition: "".startIndex)
     #expect(code.code == "let x = 1")
 
     let subst = SubstitutionNode(expression: "x")

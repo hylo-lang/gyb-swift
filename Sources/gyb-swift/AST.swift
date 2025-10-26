@@ -23,6 +23,8 @@ struct LiteralNode: ASTNode {
 struct CodeNode: ASTNode {
     /// The Swift code content.
     let code: Substring
+    /// Source position in the original template for error reporting.
+    let sourcePosition: String.Index
 
     var description: String {
         "Code: {\(code.prefix(30))\(code.dropFirst(30).isEmpty ? "" : "...")}"
@@ -85,11 +87,14 @@ struct ParseContext {
 
             case .gybLines:
                 // Extract code from %-lines
-                return CodeNode(code: extractCodeFromLines(token.text))
+                return CodeNode(
+                    code: extractCodeFromLines(token.text), sourcePosition: token.text.startIndex)
 
             case .gybBlock:
                 // Extract code between %{ and }%
-                return CodeNode(code: extractCodeFromBlockToken(token.text))
+                return CodeNode(
+                    code: extractCodeFromBlockToken(token.text),
+                    sourcePosition: token.text.startIndex)
 
             case .symbol:
                 // %% or $$ becomes single % or $

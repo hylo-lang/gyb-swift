@@ -1,3 +1,5 @@
+import SwiftParser
+import SwiftSyntax
 import Testing
 
 @testable import gyb_swift
@@ -91,4 +93,50 @@ func integration_templateStructurePreservation() throws {
     let result = try execute(text)
 
     #expect(result == text)
+}
+
+@Test("--template-generates-swift emits and fixes #sourceLocation directives")
+func integration_templateGeneratesSwift() throws {
+    // Test that when emitting #sourceLocation directives in the output,
+    // they are automatically fixed when needed
+    let text = """
+        % let x = 1
+        % if x == 1 {
+        func foo() { print("one") }
+        % } else {
+        func foo() { print("other") }
+        % }
+        """
+
+    // Generate with #sourceLocation directives in the output
+    let ast = try parseTemplate(filename: "test.gyb", text: text)
+    let generator = CodeGenerator(
+        templateText: text,
+        filename: "test.gyb",
+        lineDirective: #"#sourceLocation(file: "\(file)", line: \(line))"#,
+        emitLineDirectives: true
+    )
+
+    var result = try generator.execute(ast, bindings: [:])
+
+    // Apply the fixing strategy (simulating --template-generates-swift behavior)
+    result = fixSourceLocationPlacement(result)
+
+    // Result should contain #sourceLocation directives
+    #expect(result.contains("#sourceLocation"))
+
+    // Result should be valid Swift (no orphaned directives causing parse errors)
+    // We can verify this by checking that the fixed output can be parsed
+    let sourceFile = Parser.parse(source: result)
+
+    // If there are missing tokens, the parse failed
+    var hasMissingTokens = false
+    for token in sourceFile.tokens(viewMode: .sourceAccurate) {
+        if token.presence == .missing {
+            hasMissingTokens = true
+            break
+        }
+    }
+
+    #expect(!hasMissingTokens)
 }

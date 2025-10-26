@@ -90,6 +90,167 @@ func error_messageFormat() throws {
     #expect(hasCompilerOutput)
 }
 
+@Test("source location directives point to correct template lines")
+func sourceLocation_correctLineNumbers() throws {
+    let text = """
+        Line 1: Hello
+        Line 2: ${1 + 1}
+        Line 3: World
+        """
+
+    let code = try generateCode(text, filename: "test.gyb")
+
+    let expectedCode = #"""
+        import Foundation
+
+        // Bindings
+
+
+        // Generated code
+        #sourceLocation(file: "test.gyb", line: 1)
+        print("""
+        Line 1: Hello
+        Line 2: \(1 + 1)
+        Line 3: World
+        """, terminator: "")
+
+        """#
+    #expect(code == expectedCode)
+}
+
+@Test("source location directives before code blocks point to correct lines")
+func sourceLocation_codeBlocks() throws {
+    let text = """
+        output
+        % let x = 42
+        more output
+        % let y = 100
+        ${x + y}
+        """
+
+    let code = try generateCode(text, filename: "code.gyb")
+
+    let expectedCode = #"""
+        import Foundation
+
+        // Bindings
+
+
+        // Generated code
+        #sourceLocation(file: "code.gyb", line: 1)
+        print("""
+        output
+
+        """, terminator: "")
+        #sourceLocation(file: "code.gyb", line: 2)
+        let x = 42
+        #sourceLocation(file: "code.gyb", line: 3)
+        print("""
+        more output
+
+        """, terminator: "")
+        #sourceLocation(file: "code.gyb", line: 4)
+        let y = 100
+        #sourceLocation(file: "code.gyb", line: 5)
+        print("""
+        \(x + y)
+        """, terminator: "")
+
+        """#
+    #expect(code == expectedCode)
+}
+
+@Test("source location directives don't break multi-line code")
+func sourceLocation_multiLineCode() throws {
+    // Test that we handle multi-line code blocks correctly
+    let text = """
+        % func greet(name: String) -> String {
+        %     return "Hello, \\(name)!"
+        % }
+        ${greet(name: "World")}
+        """
+
+    let code = try generateCode(text, filename: "multiline.gyb")
+
+    let expectedCode = #"""
+        import Foundation
+
+        // Bindings
+
+
+        // Generated code
+        #sourceLocation(file: "multiline.gyb", line: 1)
+        func greet(name: String) -> String {
+        return "Hello, \(name)!"
+        }
+        #sourceLocation(file: "multiline.gyb", line: 4)
+        print("""
+        \(greet(name: "World"))
+        """, terminator: "")
+
+        """#
+    #expect(code == expectedCode)
+
+    // Verify the code compiles and executes
+    let ast = try parseTemplate(filename: "multiline.gyb", text: text)
+    let generator = CodeGenerator(templateText: text, filename: "multiline.gyb")
+    let result = try generator.execute(ast)
+    #expect(result == "Hello, World!")
+}
+
+@Test("source location directives reference correct template line for compilation errors")
+func sourceLocation_compilationErrorReferencesTemplateLine() throws {
+    // Error on line 3 of the template
+    let text = """
+        Line 1: text
+        Line 2: % let x = 10
+        Line 3: % let y: InvalidType = 20
+        Line 4: ${x + y}
+        """
+
+    let error = #expect(throws: (any Error).self) {
+        try execute(text, filename: "mytemplate.gyb")
+    }
+
+    guard let gybError = error as? GYBError else {
+        Issue.record("Expected GYBError, got \(type(of: error))")
+        return
+    }
+
+    let description = gybError.description
+    // Error should reference the template filename
+    #expect(description.contains("mytemplate.gyb"))
+    // Error should reference line 3 where the error occurs
+    #expect(description.contains("mytemplate.gyb:3"))
+}
+
+@Test("source location directives reference correct template line for runtime errors")
+func sourceLocation_runtimeErrorReferencesTemplateLine() throws {
+    // Runtime error: fatalError is on line 2, called on line 4
+    let text = """
+        Line 1: text
+        Line 2: % func crash() { fatalError("boom") }
+        Line 3: more text
+        Line 4: % crash()
+        Line 5: end
+        """
+
+    let error = #expect(throws: (any Error).self) {
+        try execute(text, filename: "crash.gyb")
+    }
+
+    guard let gybError = error as? GYBError else {
+        Issue.record("Expected GYBError, got \(type(of: error))")
+        return
+    }
+
+    let description = gybError.description
+    // Error should reference the template filename
+    #expect(description.contains("crash.gyb"))
+    // Runtime error reports where fatalError is defined (line 2), not where it's called (line 4)
+    #expect(description.contains("crash.gyb:2"))
+}
+
 // MARK: - CLI Integration Tests
 
 @Test("CLI writes compilation errors to stderr")

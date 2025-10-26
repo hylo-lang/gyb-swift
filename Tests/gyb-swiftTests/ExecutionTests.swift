@@ -73,10 +73,8 @@ func execute_multipleLiterals() throws {
 func execute_lineDirectives() throws {
     let text = "Line 1\nLine 2"
 
-    // Test with custom line directive format
+    // Verify exact generated code structure
     let code = try generateCode(text, bindings: [:])
-
-    // Verify exact generated code with line directives
     let expectedCode = #"""
         import Foundation
 
@@ -84,7 +82,7 @@ func execute_lineDirectives() throws {
 
 
         // Generated code
-        //# line 1 "test.gyb"
+        #sourceLocation(file: "test.gyb", line: 1)
         print("""
         Line 1
         Line 2
@@ -93,11 +91,7 @@ func execute_lineDirectives() throws {
         """#
     #expect(code == expectedCode)
 
-    // Test execution produces exact expected output
-    let result = try execute(
-        text,
-        filename: "test.gyb",
-        lineDirective: #"//# line \(line) "\(file)""#
-    )
+    // Test execution produces exact expected output (no line directives in output)
+    let result = try execute(text, filename: "test.gyb")
     #expect(result == "Line 1\nLine 2")
 }

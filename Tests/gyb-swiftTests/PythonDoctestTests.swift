@@ -18,7 +18,6 @@ func lineDirective_loopIterations() throws {
 
     let code = try generateCode(text, bindings: ["x": "1"])
 
-    // Verify exact generated code structure with line directives
     let expectedCode = #"""
         import Foundation
 
@@ -26,25 +25,28 @@ func lineDirective_loopIterations() throws {
         let x = "1"
 
         // Generated code
-        //# line 1 "test.gyb"
+        #sourceLocation(file: "test.gyb", line: 1)
         print("""
         Nothing
 
         """, terminator: "")
+        #sourceLocation(file: "test.gyb", line: 2)
         if x != "0" {
         for i in 0..<3 {
-        //# line 4 "test.gyb"
+        #sourceLocation(file: "test.gyb", line: 4)
         print("""
         \(i)
 
         """, terminator: "")
+        #sourceLocation(file: "test.gyb", line: 5)
         }
         } else {
-        //# line 7 "test.gyb"
+        #sourceLocation(file: "test.gyb", line: 7)
         print("""
         THIS SHOULD NOT APPEAR IN THE OUTPUT
 
         """, terminator: "")
+        #sourceLocation(file: "test.gyb", line: 8)
         }
 
         """#
@@ -54,8 +56,7 @@ func lineDirective_loopIterations() throws {
     let result = try execute(
         text,
         bindings: ["x": "1"],
-        filename: "test.gyb",
-        lineDirective: #"//# line \(line) "\(file)""#
+        filename: "test.gyb"
     )
     let expected = """
         Nothing
@@ -81,7 +82,6 @@ func lineDirective_afterCodeOnlyLines() throws {
 
     let code = try generateCode(text, bindings: [:])
 
-    // Verify exact generated code with line directives at correct positions
     let expectedCode = #"""
         import Foundation
 
@@ -89,16 +89,17 @@ func lineDirective_afterCodeOnlyLines() throws {
 
 
         // Generated code
-        //# line 1 "test.gyb"
+        #sourceLocation(file: "test.gyb", line: 1)
         print("""
         Nothing
 
         """, terminator: "")
+        #sourceLocation(file: "test.gyb", line: 2)
         var a: [Int] = []
         for x in 0..<3 {
         a.append(x)
         }
-        //# line 6 "test.gyb"
+        #sourceLocation(file: "test.gyb", line: 6)
         print("""
         \(a)
         """, terminator: "")
@@ -107,11 +108,7 @@ func lineDirective_afterCodeOnlyLines() throws {
     #expect(code == expectedCode)
 
     // Verify execution
-    let result = try execute(
-        text,
-        filename: "test.gyb",
-        lineDirective: #"//# line \(line) "\(file)""#
-    )
+    let result = try execute(text, filename: "test.gyb")
     // Template has no trailing newline after the substitution
     #expect(result == "Nothing\n[0, 1, 2]")
 }
@@ -166,7 +163,6 @@ func integration_comprehensiveExpandTest() throws {
 
     let code = try generateCode(text, bindings: ["x": "2"])
 
-    // Verify exact generated code with line directives at correct positions
     let expectedCode = ##"""
         import Foundation
 
@@ -174,19 +170,21 @@ func integration_comprehensiveExpandTest() throws {
         let x = "2"
 
         // Generated code
-        //# line 1 "test.gyb"
+        #sourceLocation(file: "test.gyb", line: 1)
         print("""
         ---
 
         """, terminator: "")
+        #sourceLocation(file: "test.gyb", line: 2)
         for i in 0..<Int(x)! {
-        //# line 3 "test.gyb"
+        #sourceLocation(file: "test.gyb", line: 3)
         print("""
         a pox on \(i) for epoxy
 
         """, terminator: "")
+        #sourceLocation(file: "test.gyb", line: 4)
         }
-        //# line 5 "test.gyb"
+        #sourceLocation(file: "test.gyb", line: 5)
         print("""
         \(120 +
 
@@ -203,8 +201,7 @@ func integration_comprehensiveExpandTest() throws {
     let result = try execute(
         text,
         bindings: ["x": "2"],
-        filename: "test.gyb",
-        lineDirective: #"//# line \(line) "\(file)""#
+        filename: "test.gyb"
     )
 
     // Note: the ${"w\nx\nX\ny"} expression outputs the escaped string literally
@@ -232,13 +229,8 @@ func lineDirective_alternativeFormat() throws {
         ${a}
         """
 
-    let code = try generateCode(
-        text,
-        bindings: [:],
-        lineDirective: #"#line \(line) "\(file)""#
-    )
+    let code = try generateCode(text, bindings: [:])
 
-    // Verify exact generated code with alternative line directive format
     let expectedCode = #"""
         import Foundation
 
@@ -246,20 +238,25 @@ func lineDirective_alternativeFormat() throws {
 
 
         // Generated code
-        #line 1 "test.gyb"
+        #sourceLocation(file: "test.gyb", line: 1)
         print("""
         Nothing
 
         """, terminator: "")
+        #sourceLocation(file: "test.gyb", line: 2)
         var a: [Int] = []
         for x in 0..<3 {
         a.append(x)
         }
-        #line 6 "test.gyb"
+        #sourceLocation(file: "test.gyb", line: 6)
         print("""
         \(a)
         """, terminator: "")
 
         """#
     #expect(code == expectedCode)
+
+    // Test execution produces correct output
+    let result = try execute(text, filename: "test.gyb")
+    #expect(result == "Nothing\n[0, 1, 2]")
 }

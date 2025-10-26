@@ -82,10 +82,19 @@ struct GYBSwift: ParsableCommand {
 
     @Option(
         help: """
-            Line directive format string with \\(file) and \\(line) placeholders.
-            Example: '#sourceLocation(file: "\\(file)", line: \\(line))'
+            Line directive format string with \\(file) and \\(line) placeholders to emit in output.
+            Example: '//# line \\(line) "\\(file)"'
+            Default: no line directives in output
             """)
-    var lineDirective: String = #"#sourceLocation(file: "\(file)", line: \(line))"#
+    var lineDirective: String = ""
+
+    @Flag(
+        help: """
+            Emit #sourceLocation directives in template output and fix their placement.
+            Sets lineDirective to '#sourceLocation(file: "\\(file)", line: \\(line))' and applies
+            automatic fixing to ensure directives are in valid positions.
+            """)
+    var templateGeneratesSwift: Bool = false
 
     @Flag(help: "Dump the parsed template AST to stdout")
     var dump: Bool = false
@@ -95,6 +104,12 @@ struct GYBSwift: ParsableCommand {
 
     /// Reads the template, parses it, executes it with bindings, and writes output.
     mutating func run() throws {
+
+        // Set lineDirective if --template-generates-swift is specified
+        var effectiveLineDirective = lineDirective
+        if templateGeneratesSwift {
+            effectiveLineDirective = #"#sourceLocation(file: "\(file)", line: \(line))"#
+        }
 
         // Parse variable bindings
         let bindings: [String: String] = try Dictionary(
@@ -136,8 +151,8 @@ struct GYBSwift: ParsableCommand {
         let generator = CodeGenerator(
             templateText: templateText,
             filename: filename,
-            lineDirective: lineDirective,
-            emitSourceLocation: true
+            lineDirective: effectiveLineDirective,
+            emitLineDirectives: !effectiveLineDirective.isEmpty
         )
 
         // Dump generated Swift code if requested
@@ -154,7 +169,12 @@ struct GYBSwift: ParsableCommand {
         }
 
         // Execute template
-        let result = try generator.execute(ast, bindings: bindings)
+        var result = try generator.execute(ast, bindings: bindings)
+
+        // Fix #sourceLocation directives in template output if needed
+        if templateGeneratesSwift {
+            result = fixSourceLocationPlacement(result)
+        }
 
         // Write output
         if output == "-" {
