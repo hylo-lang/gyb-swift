@@ -221,6 +221,7 @@ private func escapeForSwiftMultilineString(_ text: String) -> String {
         text
         .replacingOccurrences(of: #"\"#, with: #"\\"#)
         .replacingOccurrences(of: #"""""#, with: #"\"\"\""#)
+        // Undo escaping for interpolations so \(expr) is undisturbed.
         .replacingOccurrences(of: #"\\("#, with: #"\("#)
 }
 
