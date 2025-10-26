@@ -74,7 +74,6 @@ struct CodeGenerator {
         // Generate bindings code
         let bindingsCode =
             bindings
-            .filter { $0.key != "__children__" && $0.key != "__context__" }
             .map { "let \($0.key) = \(String(reflecting: $0.value))" }
             .joined(separator: "\n")
 
