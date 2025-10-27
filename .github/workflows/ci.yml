@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up swift
+      uses: SwiftyLab/setup-swift@latest
+      with:
+        swift-version: 6.2
+
+    - name: Print Swift version
+      run: swift --version
+    
+    - name: Run tests
+      run: swift test
+
