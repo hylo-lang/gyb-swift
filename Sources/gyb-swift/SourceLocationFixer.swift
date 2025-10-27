@@ -24,78 +24,77 @@ func fixSourceLocationPlacement(_ swiftSource: String) -> String {
     return currentCode
 }
 
+/// Visitor that finds `#sourceLocation` directives within or adjacent to
+/// `UnexpectedNodesSyntax` nodes.
+private class UnexpectedVisitor: SyntaxVisitor {
+    let converter: SourceLocationConverter
+    let tokens: [TokenSyntax]
+    var problematicLineIndices: [Int] = []
+    var foundDirectives = Set<Int>()
+
+    init(converter: SourceLocationConverter, tokens: [TokenSyntax]) {
+        self.converter = converter
+        self.tokens = tokens
+        super.init(viewMode: .sourceAccurate)
+    }
+
+    override func visit(_ node: UnexpectedNodesSyntax) -> SyntaxVisitorContinueKind {
+        let unexpectedTokens = Array(node.tokens(viewMode: .sourceAccurate))
+
+        // Check if any tokens in this unexpected node are #sourceLocation directives
+        for token in node.tokens(viewMode: .sourceAccurate) {
+            if token.tokenKind == .poundSourceLocation {
+                let lineIndex = converter.location(for: token.position).line
+                if !foundDirectives.contains(lineIndex) {
+                    problematicLineIndices.append(lineIndex)
+                    foundDirectives.insert(lineIndex)
+                }
+            }
+        }
+
+        // Also look for #sourceLocation directives adjacent to this unexpected node
+        guard let firstUnexpectedToken = unexpectedTokens.first else {
+            return .visitChildren
+        }
+
+        // Find the index of this unexpected token in the full token list
+        guard
+            let unexpectedIndex = tokens.firstIndex(where: {
+                $0.position == firstUnexpectedToken.position
+            })
+        else {
+            return .visitChildren
+        }
+
+        for (tokenIndex, token) in tokens.enumerated() {
+            guard token.tokenKind == .poundSourceLocation else { continue }
+
+            // A #sourceLocation directive is always exactly 12 tokens:
+            // #sourceLocation ( file : " string " , line : int )
+            // The directive ends at tokenIndex + 11
+            let directiveEndIndex = tokenIndex + 11
+
+            // Check if the directive is directly adjacent to the unexpected node
+            // (next token is the start of unexpected)
+            if directiveEndIndex + 1 == unexpectedIndex {
+                let directiveLineIndex = converter.location(for: token.position).line
+                if !foundDirectives.contains(directiveLineIndex) {
+                    problematicLineIndices.append(directiveLineIndex)
+                    foundDirectives.insert(directiveLineIndex)
+                }
+            }
+        }
+
+        return .visitChildren
+    }
+}
+
 /// Parses Swift code and finds `#sourceLocation` directives causing syntax errors.
 ///
 /// Returns the line indices (0-based) where problematic directives appear.
 private func parseAndFindProblematicDirectives(_ code: String) -> [Int] {
-    // Parse the code
     let sourceFile = Parser.parse(source: code)
     let converter = SourceLocationConverter(fileName: "", tree: sourceFile)
-
-    // Walk the tree looking for Unexpected nodes containing #sourceLocation directives
-    class UnexpectedVisitor: SyntaxVisitor {
-        let converter: SourceLocationConverter
-        let tokens: [TokenSyntax]
-        var problematicLineIndices: [Int] = []
-        var foundDirectives = Set<Int>()
-
-        init(converter: SourceLocationConverter, tokens: [TokenSyntax]) {
-            self.converter = converter
-            self.tokens = tokens
-            super.init(viewMode: .sourceAccurate)
-        }
-
-        override func visit(_ node: UnexpectedNodesSyntax) -> SyntaxVisitorContinueKind {
-            let unexpectedTokens = Array(node.tokens(viewMode: .sourceAccurate))
-
-            // Check if any tokens in this unexpected node are #sourceLocation directives
-            for token in node.tokens(viewMode: .sourceAccurate) {
-                if token.tokenKind == .poundSourceLocation {
-                    let lineIndex = converter.location(for: token.position).line
-                    if !foundDirectives.contains(lineIndex) {
-                        problematicLineIndices.append(lineIndex)
-                        foundDirectives.insert(lineIndex)
-                    }
-                }
-            }
-
-            // Also look for #sourceLocation directives adjacent to this unexpected node
-            guard let firstUnexpectedToken = unexpectedTokens.first else {
-                return .visitChildren
-            }
-
-            // Find the index of this unexpected token in the full token list
-            guard
-                let unexpectedIndex = tokens.firstIndex(where: {
-                    $0.position == firstUnexpectedToken.position
-                })
-            else {
-                return .visitChildren
-            }
-
-            for (tokenIndex, token) in tokens.enumerated() {
-                guard token.tokenKind == .poundSourceLocation else { continue }
-
-                // A #sourceLocation directive is always exactly 12 tokens:
-                // #sourceLocation ( file : " string " , line : int )
-                // The directive ends at tokenIndex + 11
-                let directiveEndIndex = tokenIndex + 11
-
-                // Check if the directive is directly adjacent to the unexpected node
-                // (next token is the start of unexpected)
-                if directiveEndIndex + 1 == unexpectedIndex {
-                    let directiveLineIndex = converter.location(for: token.position).line
-                    if !foundDirectives.contains(directiveLineIndex) {
-                        problematicLineIndices.append(directiveLineIndex)
-                        foundDirectives.insert(directiveLineIndex)
-                    }
-                }
-            }
-
-            return .visitChildren
-        }
-    }
-
     let tokens = Array(sourceFile.tokens(viewMode: .sourceAccurate))
     let visitor = UnexpectedVisitor(converter: converter, tokens: tokens)
     visitor.walk(sourceFile)
