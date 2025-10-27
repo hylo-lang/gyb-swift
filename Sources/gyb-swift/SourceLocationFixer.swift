@@ -3,62 +3,40 @@ import SwiftDiagnostics
 import SwiftParser
 import SwiftSyntax
 
-/// Fixes misplaced `#sourceLocation` directives in generated Swift code.
-///
-/// Uses SwiftParser to detect syntax errors caused by misplaced directives.
-/// Moves problematic directives down line-by-line until they become legal or are discarded.
-func fixSourceLocationPlacement(_ code: String) -> String {
-    var currentCode = code
+/// Returns `swiftSource` with any illegally-placed `#sourceLocation`
+/// directives adjusted for syntactic validity, or discards them if
+/// that isn't possible.
+func fixSourceLocationPlacement(_ swiftSource: String) -> String {
+    var currentCode = swiftSource
 
-    // Keep trying to fix until no more fixes are needed or we've tried enough times
-    for _ in 0..<100 {  // Arbitrary limit to prevent infinite loops
-        let parseResult = parseAndFindProblematicDirectives(currentCode)
+    // Keep trying to fix until no more fixes are needed
+    while true {
+        let problematicLineIndices = parseAndFindProblematicDirectives(currentCode)
 
-        if parseResult.problematicDirectives.isEmpty {
+        if problematicLineIndices.isEmpty {
             break
         }
 
-        // Fix the first problematic directive we find
-        if let fixed = fixFirstProblematicDirective(currentCode, parseResult.problematicDirectives)
-        {
-            currentCode = fixed
-        } else {
-            // Couldn't fix this one, give up
-            break
-        }
+        // Fix the first problematic directive (either move it or discard it)
+        currentCode = fixFirstProblematicDirective(currentCode, problematicLineIndices)
     }
 
     return currentCode
 }
 
-/// Information about a problematic `#sourceLocation` directive.
-private struct ProblematicDirective {
-    /// The line index (0-based) where the directive appears.
-    let lineIndex: Int
-    /// The line index (0-based) where the syntax error occurs.
-    let errorLineIndex: Int
-}
-
-/// Result of parsing code and looking for problematic directives.
-private struct ParseResult {
-    /// Problematic directives found, ordered by line index.
-    let problematicDirectives: [ProblematicDirective]
-}
-
 /// Parses Swift code and finds `#sourceLocation` directives causing syntax errors.
-private func parseAndFindProblematicDirectives(_ code: String) -> ParseResult {
+///
+/// Returns the line indices (0-based) where problematic directives appear.
+private func parseAndFindProblematicDirectives(_ code: String) -> [Int] {
     // Parse the code
     let sourceFile = Parser.parse(source: code)
     let converter = SourceLocationConverter(fileName: "", tree: sourceFile)
-    
-    
-    var problematic: [ProblematicDirective] = []
 
     // Walk the tree looking for Unexpected nodes containing #sourceLocation directives
     class UnexpectedVisitor: SyntaxVisitor {
         let converter: SourceLocationConverter
         let tokens: [TokenSyntax]
-        var problematic: [ProblematicDirective] = []
+        var problematicLineIndices: [Int] = []
         var foundDirectives = Set<Int>()
 
         init(converter: SourceLocationConverter, tokens: [TokenSyntax]) {
@@ -68,24 +46,14 @@ private func parseAndFindProblematicDirectives(_ code: String) -> ParseResult {
         }
 
         override func visit(_ node: UnexpectedNodesSyntax) -> SyntaxVisitorContinueKind {
-            let startPos = node.position
-            let endPos = node.endPosition
-            let startLine = converter.location(for: startPos).line
-            let endLine = converter.location(for: endPos).line
-            
             let unexpectedTokens = Array(node.tokens(viewMode: .sourceAccurate))
-            
+
             // Check if any tokens in this unexpected node are #sourceLocation directives
             for token in node.tokens(viewMode: .sourceAccurate) {
                 if token.tokenKind == .poundSourceLocation {
                     let lineIndex = converter.location(for: token.position).line
                     if !foundDirectives.contains(lineIndex) {
-                        problematic.append(
-                            ProblematicDirective(
-                                lineIndex: lineIndex,
-                                errorLineIndex: lineIndex
-                            )
-                        )
+                        problematicLineIndices.append(lineIndex)
                         foundDirectives.insert(lineIndex)
                     }
                 }
@@ -118,11 +86,7 @@ private func parseAndFindProblematicDirectives(_ code: String) -> ParseResult {
                 if directiveEndIndex + 1 == unexpectedIndex {
                     let directiveLineIndex = converter.location(for: token.position).line
                     if !foundDirectives.contains(directiveLineIndex) {
-                        let unexpectedLineIndex = converter.location(for: node.position).line
-                        problematic.append(
-                            ProblematicDirective(
-                                lineIndex: directiveLineIndex, errorLineIndex: unexpectedLineIndex)
-                        )
+                        problematicLineIndices.append(directiveLineIndex)
                         foundDirectives.insert(directiveLineIndex)
                     }
                 }
@@ -136,22 +100,18 @@ private func parseAndFindProblematicDirectives(_ code: String) -> ParseResult {
     let visitor = UnexpectedVisitor(converter: converter, tokens: tokens)
     visitor.walk(sourceFile)
 
-    problematic = visitor.problematic
-
-    // All problematic directives are detected by checking UnexpectedNodesSyntax above.
-    // No need for separate missing token or proximity checks.
-
-    return ParseResult(problematicDirectives: problematic.sorted { $0.lineIndex < $1.lineIndex })
+    return visitor.problematicLineIndices.sorted()
 }
 
 /// Attempts to fix the first problematic directive by moving it token-by-token.
 ///
-/// Returns the fixed code if successful, or `nil` if the directive should be discarded.
+/// If the directive can be moved to a valid position, returns the code with the directive moved.
+/// If no valid position exists, returns the code with the directive discarded.
 private func fixFirstProblematicDirective(
-    _ code: String, _ problematicDirectives: [ProblematicDirective]
-) -> String? {
-    guard let directive = problematicDirectives.first else {
-        return nil
+    _ code: String, _ problematicLineIndices: [Int]
+) -> String {
+    guard let directiveLineIndex = problematicLineIndices.first else {
+        return code
     }
 
     // Parse and get all tokens
@@ -164,19 +124,17 @@ private func fixFirstProblematicDirective(
     for (idx, token) in tokens.enumerated() {
         if token.tokenKind == .poundSourceLocation {
             let line = converter.location(for: token.position).line
-            if line == directive.lineIndex {
+            if line == directiveLineIndex {
                 directiveTokenIndex = idx
                 break
             }
         }
     }
 
-    guard let startIdx = directiveTokenIndex else {
-        return code
-    }
-
-    // Extract the 12-token directive
-    guard startIdx + 11 < tokens.count else {
+    // If we can't find the directive or it's malformed, just remove it by returning unchanged code
+    // (It will be removed in the next parse since it won't be detected again)
+    guard let startIdx = directiveTokenIndex, startIdx + 11 < tokens.count else {
+        // Can't locate the directive properly, skip it
         return code
     }
 
@@ -185,7 +143,7 @@ private func fixFirstProblematicDirective(
     // Capture trivia from the directive
     let leadingTrivia = directiveTokens[0].leadingTrivia
     let trailingTrivia = directiveTokens[11].trailingTrivia
-    
+
     // Split leading trivia at the LAST newline
     let leadingPieces = Array(leadingTrivia)
     var lastNewlineIndex: Int? = nil
@@ -213,7 +171,7 @@ private func fixFirstProblematicDirective(
             leadingToKeep = leadingTrivia
         }
     }
-    
+
     // Split trailing trivia at the FIRST newline
     let trailingPieces = Array(trailingTrivia)
     var firstNewlineIndex: Int? = nil
@@ -223,16 +181,15 @@ private func fixFirstProblematicDirective(
             break
         }
     }
-    
+
     let (trailingToKeep, trailingToTransfer): (Trivia, Trivia)
-    let tokenAfterIndex = startIdx + 12
     if let idx = firstNewlineIndex {
         // Keep the newline and everything before it, transfer everything after
         trailingToKeep = Trivia(pieces: Array(trailingPieces[0...idx]))
-        trailingToTransfer = Trivia(pieces: Array(trailingPieces[(idx+1)...]))
+        trailingToTransfer = Trivia(pieces: Array(trailingPieces[(idx + 1)...]))
     } else {
         // No newline in trailing trivia
-        if tokenAfterIndex < tokens.count {
+        if startIdx + 12 < tokens.count {
             // Has next token, transfer all trailing trivia
             trailingToKeep = Trivia()
             trailingToTransfer = trailingTrivia
@@ -242,29 +199,24 @@ private func fixFirstProblematicDirective(
             trailingToTransfer = Trivia()
         }
     }
-    
+
     // Create directive tokens with the trivia to keep
     var directiveToMove = directiveTokens
     directiveToMove[0] = directiveToMove[0].with(\.leadingTrivia, leadingToKeep)
     directiveToMove[11] = directiveToMove[11].with(\.trailingTrivia, trailingToKeep)
-    
-    // Extract the original line number from token[10]
-    guard let originalLineNumber = Int(directiveTokens[10].text) else {
-        return code
-    }
 
     // Transfer trivia to surrounding tokens before removing the directive
     if !leadingToTransfer.isEmpty && startIdx > 0 {
         tokens[startIdx - 1] = tokens[startIdx - 1].with(
-            \.trailingTrivia, 
+            \.trailingTrivia,
             tokens[startIdx - 1].trailingTrivia + leadingToTransfer
         )
     }
-    
-    if !trailingToTransfer.isEmpty && tokenAfterIndex < tokens.count {
-        tokens[tokenAfterIndex] = tokens[tokenAfterIndex].with(
+
+    if !trailingToTransfer.isEmpty && startIdx + 12 < tokens.count {
+        tokens[startIdx + 12] = tokens[startIdx + 12].with(
             \.leadingTrivia,
-            trailingToTransfer + tokens[tokenAfterIndex].leadingTrivia
+            trailingToTransfer + tokens[startIdx + 12].leadingTrivia
         )
     }
 
@@ -274,14 +226,12 @@ private func fixFirstProblematicDirective(
     // Try inserting at subsequent positions
     // Start at the position where the directive was (now occupied by what was after it)
     var insertPos = startIdx
-    var updatedLineNumber = originalLineNumber
 
     while insertPos <= tokens.count {
         // Check if there's already a #sourceLocation at this position
         if insertPos < tokens.count && tokens[insertPos].tokenKind == .poundSourceLocation {
             // Skip past this directive (12 tokens)
             insertPos += 12
-            updatedLineNumber += 1
             continue
         }
 
@@ -290,23 +240,24 @@ private func fixFirstProblematicDirective(
 
         // Reconstruct source from tokens to calculate actual line numbers
         let reconstructed = tokens.map { $0.description }.joined()
-        
+
         // Parse to find what line the directive we just inserted ended up on
         let tempSourceFile = Parser.parse(source: reconstructed)
         let tempConverter = SourceLocationConverter(fileName: "", tree: tempSourceFile)
-        
+
         // Find the directive we just inserted (at the insertPos token position)
         let tokensAfterInsertion = Array(tempSourceFile.tokens(viewMode: .sourceAccurate))
         var ourDirectiveLineInReconstructed: Int? = nil
-        
+
         // The directive we inserted should be at token index insertPos
         if insertPos < tokensAfterInsertion.count {
             let tokenAtInsertPos = tokensAfterInsertion[insertPos]
             if tokenAtInsertPos.tokenKind == .poundSourceLocation {
-                ourDirectiveLineInReconstructed = tempConverter.location(for: tokenAtInsertPos.position).line
+                ourDirectiveLineInReconstructed =
+                    tempConverter.location(for: tokenAtInsertPos.position).line
             }
         }
-        
+
         // Update the line number to point to the line after the directive
         // SwiftSyntax uses 0-based line numbering, but #sourceLocation uses 1-based
         if let directiveLine = ourDirectiveLineInReconstructed {
@@ -328,13 +279,14 @@ private func fixFirstProblematicDirective(
         let finalReconstructed = tokens.map { $0.description }.joined()
 
         // Check if THIS SPECIFIC directive is still problematic
-        let parseResult = parseAndFindProblematicDirectives(finalReconstructed)
-        
+        let problematicLineIndices = parseAndFindProblematicDirectives(finalReconstructed)
+
         // Check if our directive (at the line where we placed it) is still in the problematic list
-        let ourDirectiveStillProblematic = ourDirectiveLineInReconstructed.map { ourLine in
-            parseResult.problematicDirectives.contains { $0.lineIndex == ourLine }
-        } ?? true  // If we couldn't find our directive, assume it's still problematic
-        
+        let ourDirectiveStillProblematic =
+            ourDirectiveLineInReconstructed.map { ourLine in
+                problematicLineIndices.contains(ourLine)
+            } ?? true  // If we couldn't find our directive, assume it's still problematic
+
         if !ourDirectiveStillProblematic {
             return finalReconstructed
         }
@@ -342,7 +294,6 @@ private func fixFirstProblematicDirective(
         // Still problematic, remove and try next position
         tokens.removeSubrange(insertPos..<insertPos + 12)
         insertPos += 1
-        updatedLineNumber += 1
     }
 
     // Exhausted all positions, discard the directive
