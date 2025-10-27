@@ -5,15 +5,11 @@ import Foundation
 
 /// Errors that can occur during template execution.
 enum GYBError: Error, CustomStringConvertible {
-    /// Generated Swift code failed to compile, with compiler output.
-    case compilationFailed(filename: String, compilerOutput: String)
-    /// Compiled program failed during execution, with error output.
+    /// Generated Swift code failed during compilation or execution, with error output.
     case executionFailed(filename: String, errorOutput: String)
 
     var description: String {
         switch self {
-        case .compilationFailed(let filename, let compilerOutput):
-            return "Error compiling generated code from \(filename)\n\(compilerOutput)"
         case .executionFailed(let filename, let errorOutput):
             return "Error executing generated code from \(filename)\n\(errorOutput)"
         }
@@ -112,48 +108,28 @@ struct CodeGenerator {
         // Write to temporary file
         let tempDir = FileManager.default.temporaryDirectory
         let sourceFile = tempDir.appendingPathComponent("gyb_\(UUID().uuidString).swift")
-        let executableFile = tempDir.appendingPathComponent("gyb_\(UUID().uuidString)")
 
         defer {
             try? FileManager.default.removeItem(at: sourceFile)
-            try? FileManager.default.removeItem(at: executableFile)
         }
 
         try swiftCode.write(to: sourceFile, atomically: true, encoding: .utf8)
 
-        // Compile
-        let compileProcess = processForCommand(
-            "swiftc", arguments: ["-o", executableFile.path, sourceFile.path])
-
-        let compileErrorPipe = Pipe()
-        compileProcess.standardError = compileErrorPipe
-        compileProcess.standardOutput = compileErrorPipe
-
-        try compileProcess.run()
-        compileProcess.waitUntilExit()
-
-        if compileProcess.terminationStatus != 0 {
-            let errorData = compileErrorPipe.fileHandleForReading.readDataToEndOfFile()
-            let compilerOutput =
-                String(data: errorData, encoding: .utf8) ?? "Unknown compilation error"
-            throw GYBError.compilationFailed(filename: filename, compilerOutput: compilerOutput)
-        }
-
-        // Execute
-        let runProcess = Process()
-        runProcess.executableURL = executableFile
+        // Execute directly with swift command
+        let process = processForCommand(
+            "swift", arguments: [sourceFile.path(percentEncoded: false)])
 
         let outputPipe = Pipe()
         let errorPipe = Pipe()
-        runProcess.standardOutput = outputPipe
-        runProcess.standardError = errorPipe
+        process.standardOutput = outputPipe
+        process.standardError = errorPipe
 
-        try runProcess.run()
-        runProcess.waitUntilExit()
+        try process.run()
+        process.waitUntilExit()
 
-        if runProcess.terminationStatus != 0 {
+        if process.terminationStatus != 0 {
             let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-            let errorOutput = String(data: errorData, encoding: .utf8) ?? "Unknown execution error"
+            let errorOutput = String(data: errorData, encoding: .utf8) ?? "Unknown error"
             throw GYBError.executionFailed(filename: filename, errorOutput: errorOutput)
         }
 

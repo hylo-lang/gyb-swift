@@ -24,11 +24,11 @@ func error_compilationFailure() throws {
     let description = gybError.description
     // Should include filename
     #expect(description.contains("test.gyb"))
-    // Should include "compiling" to indicate compilation phase
-    #expect(description.contains("compiling"))
-    // Should include compiler output (with newline separator)
+    // Should include "executing" to indicate the error phase
+    #expect(description.contains("executing"))
+    // Should include error output (with newline separator)
     #expect(description.contains("\n"))
-    // Compiler should mention the invalid type
+    // Error should mention the invalid type
     #expect(description.contains("InvalidType") || description.contains("cannot find"))
 }
 
@@ -287,14 +287,14 @@ func cli_compilationErrorToStderr() throws {
     let stderr = String(data: stderrData, encoding: .utf8) ?? ""
 
     // Expected format (ArgumentParser adds "Error: " prefix):
-    // Error: Error compiling generated code from <filename>
+    // Error: Error executing generated code from <filename>
     // <compiler error output with file:line:column format>
     let regex = Regex {
         "Error:"
         OneOrMore(.whitespace)
         "Error"
         OneOrMore(.whitespace)
-        "compiling"
+        "executing"
         OneOrMore(.whitespace)
         "generated"
         OneOrMore(.whitespace)
@@ -323,7 +323,7 @@ func cli_compilationErrorToStderr() throws {
         stderr should match expected error format.
 
         Expected pattern:
-        Error: Error compiling generated code from <filename>
+        Error: Error executing generated code from <filename>
         <compiler error with NonexistentType or "cannot find">
 
         Actual stderr:
