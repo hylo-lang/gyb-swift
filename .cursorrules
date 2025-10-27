@@ -1,0 +1,46 @@
+We are working on a translation of the Python `gyb.py` tool to Swift.  The original tool is at https://raw.githubusercontent.com/swiftlang/swift/refs/heads/main/utils/gyb.py
+
+Follow the Swift API guidelines https://www.swift.org/documentation/api-design-guidelines/
+Uphold the principles outlined in https://github.com/stlab/better-code/blob/main/better-code/src/chapter-2-contracts.md
+
+If they conflict, give priority to the contracts chapter.
+
+Whenever you are given corrections to general methodology, update the .cursorrules file with that information.
+
+Never decide that something can be skipped, non-functional, stubbed, or not tested without checking with the human operator first.
+
+Use swift-format to keep the source formatted.  Limit line lengths in
+code, including comments, to 100 characters.
+
+To save time, instead of doing separate consecutive `swift build` and `swift test` commands, just use `swift test` which will always build first if necessary.
+
+In tests, do not do parial checks of results (like `result.contains(y)`) when you could check the entire value of `result`.
+
+When running tests added temporarily for diagnostic purposes, run `swift test --filter <testname>` to avoid running other tests or being confused by their output.
+
+Do not use any arbitrary thresholds or heuristics in the actual code.
+
+Always use structs instead of classes where possible.
+
+Avoid needless nesting.
+
+Every comment in the body of a function of the form "now we're going to X" indicates the next section of code should be its own function with a meaningful name.
+
+Each time you write a block of code with a preceding explanatory comment, extract it into a separate well-named function where the explanation becomes the function's contract. Apply this principle everywhere ongoingly.
+
+Avoid raw loops and use algorithms instead where possible.
+
+Always fix all warnings.
+
+## Documentation Guidelines
+
+- Every declaration outside a function body needs a doc comment except for tests and declarations that satisfy protocol requirements.
+- Capture the complete contract in concise summaries following better-code contracts principles
+- Avoid verbose parameter blocks when good naming and a clear summary suffice
+- Name parameters in summary (e.g., "`nodes`'s text") to show their roles precisely
+- Raise the level of abstraction - focus on semantic meaning rather than implementation details
+- When multiple sentences are needed, separate them with a blank line
+- Prefer single sentences with clauses (e.g., ", or `nil` if...") over multiple short sentences
+- Document init functions as though they are descriptions of the
+  constructed object, e.g. `A sequence of tokens from a template`.
+- Document subscripts like properties, i.e. "The element at position `i`."
