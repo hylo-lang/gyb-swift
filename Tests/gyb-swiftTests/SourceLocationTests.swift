@@ -7,7 +7,8 @@ import Testing
 
 // MARK: - Test Helpers
 
-/// Tests that fixer transforms `input` to match `expected`.
+/// Tests that fixer transforms `input` to match `expected` and 
+/// that the adjusted directives point to the correct lines.
 ///
 /// Verifies:
 /// 1. Fixer produces the expected output
@@ -56,15 +57,84 @@ func assertFixesCode(
         sourceLocation: sourceLocation
     )
 
-    // Verify directives work correctly if assertLine(#) is present
-    if fixed.contains("assertLine(#)") {
-        verifySourceLocationDirectives(fixed, sourceLocation: sourceLocation)
-    }
+    // Verify directives point to correct lines by running the code
+    verifySourceLocationDirectives(fixed, sourceLocation: sourceLocation)
 }
 
 /// The number of `#sourceLocation` directives in `code`.
 private func countSourceLocationDirectives(in code: String) -> Int {
     return code.components(separatedBy: "#sourceLocation").count - 1
+}
+
+/// The line number specified in a `#sourceLocation` directive, or `nil` if not found.
+private func extractLineNumber(from directiveLine: String) -> Int? {
+    let numberPattern = #"line: (\d+)"#
+    guard let numberMatch = directiveLine.range(of: numberPattern, options: .regularExpression) else {
+        return nil
+    }
+    
+    let numberText = directiveLine[numberMatch]
+    guard let colonIndex = numberText.firstIndex(of: ":") else { return nil }
+    
+    let afterColon = numberText[numberText.index(after: colonIndex)...].trimmingCharacters(
+        in: .whitespaces)
+    return Int(afterColon)
+}
+
+/// `lines` with `assertLine(#)` placeholders replaced with actual line numbers.
+private func replaceAssertLinePlaceholders(in lines: [String]) -> [String] {
+    var result = lines
+    var lastDirectiveLine: Int? = nil
+    
+    for i in 0..<result.count {
+        if result[i].range(
+            of: #"#sourceLocation\(file: "[^"]*", line: (\d+)\)"#, options: .regularExpression)
+            != nil
+        {
+            lastDirectiveLine = extractLineNumber(from: result[i])
+        }
+        
+        if result[i].contains("assertLine(#)"), let directiveLine = lastDirectiveLine {
+            let linesSinceDirective =
+                i
+                - (result.firstIndex(where: {
+                    $0.contains("#sourceLocation") && $0.contains("line: \(directiveLine)")
+                }) ?? 0)
+            let expectedLine = directiveLine + linesSinceDirective - 1
+            result[i] = result[i].replacingOccurrences(
+                of: "assertLine(#)", with: "assertLine(\(expectedLine))")
+        }
+    }
+    
+    return result
+}
+
+/// Runs `swiftCode` as a script, recording a test failure if it exits with non-zero status.
+private func runSwiftScript(
+    _ swiftCode: String, sourceLocation: Testing.SourceLocation
+) {
+    let tempFile = "/tmp/test_source_location_\(UUID().uuidString).swift"
+    do {
+        try swiftCode.write(toFile: tempFile, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(atPath: tempFile) }
+        
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/swift")
+        process.arguments = [tempFile]
+        try process.run()
+        process.waitUntilExit()
+        
+        #expect(
+            process.terminationStatus == 0,
+            "#sourceLocation directives do not map to correct lines",
+            sourceLocation: sourceLocation
+        )
+    } catch {
+        Issue.record(
+            "Failed to verify source location directives: \(error)",
+            sourceLocation: sourceLocation
+        )
+    }
 }
 
 /// Verifies that `#sourceLocation` directives correctly map to original source lines.
@@ -77,61 +147,12 @@ private func verifySourceLocationDirectives(
         func assertLine(_ expected: UInt, _ line: UInt = #line) { assert(line == expected) }
         
         """
-
-    var lines = code.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-
-    // Process each line to replace assertLine(#) with correct line number
-    var lastDirectiveLine: Int? = nil
-    for i in 0..<lines.count {
-        // Check if this line contains a #sourceLocation directive
-        if lines[i].range(of: #"#sourceLocation\(file: "[^"]*", line: (\d+)\)"#, options: .regularExpression) != nil {
-            let numberPattern = #"line: (\d+)"#
-            if let numberMatch = lines[i].range(of: numberPattern, options: .regularExpression) {
-                let numberText = lines[i][numberMatch]
-                if let colonIndex = numberText.firstIndex(of: ":") {
-                    let afterColon = numberText[numberText.index(after: colonIndex)...].trimmingCharacters(in: .whitespaces)
-                    if let lineNum = Int(afterColon) {
-                        lastDirectiveLine = lineNum
-                    }
-                }
-            }
-        }
-
-        // Check if this line contains assertLine(#)
-        if lines[i].contains("assertLine(#)"), let directiveLine = lastDirectiveLine {
-            // Count lines from directive to this assertLine call
-            // The directive points to the line after it appears
-            let linesSinceDirective = i - (lines.firstIndex(where: { $0.contains("#sourceLocation") && $0.contains("line: \(directiveLine)") }) ?? 0)
-            let expectedLine = directiveLine + linesSinceDirective - 1
-            lines[i] = lines[i].replacingOccurrences(of: "assertLine(#)", with: "assertLine(\(expectedLine))")
-        }
-    }
-
-    let executable = assertLineFunction + lines.joined(separator: "\n")
-
-    // Run the code as a Swift script
-    let tempFile = "/tmp/test_source_location_\(UUID().uuidString).swift"
-    do {
-        try executable.write(toFile: tempFile, atomically: true, encoding: .utf8)
-        defer { try? FileManager.default.removeItem(atPath: tempFile) }
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/swift")
-        process.arguments = [tempFile]
-        try process.run()
-        process.waitUntilExit()
-
-        #expect(
-            process.terminationStatus == 0,
-            "#sourceLocation directives do not map to correct lines",
-            sourceLocation: sourceLocation
-        )
-    } catch {
-        Issue.record(
-            "Failed to verify source location directives: \(error)",
-            sourceLocation: sourceLocation
-        )
-    }
+    
+    let lines = code.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+    let processedLines = replaceAssertLinePlaceholders(in: lines)
+    let executable = assertLineFunction + processedLines.joined(separator: "\n")
+    
+    runSwiftScript(executable, sourceLocation: sourceLocation)
 }
 
 /// Tests that fixer doesn't modify valid code.
