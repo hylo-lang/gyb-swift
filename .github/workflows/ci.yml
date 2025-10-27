@@ -26,6 +26,15 @@ jobs:
     - name: Print Swift version
       run: swift --version
     
+    - name: Restore Cache for SPM
+      if: ${{ matrix.build-system == 'spm' }}
+      uses: actions/cache@v4
+      with:
+        path: .build
+        key: devcontainer-${{ matrix.config }}-spm-${{ hashFiles('**/Package.resolved') }}
+        restore-keys: |
+          ${{ runner.os }}-spm-
+
     - name: Run tests
       run: swift test
 
