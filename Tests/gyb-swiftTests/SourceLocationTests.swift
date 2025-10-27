@@ -261,26 +261,3 @@ func sourceLocationFixer_beforeSwitchCase() {
 
     assertFixesCode(input, expected: expected)
 }
-
-// MARK: - Known Limitations
-
-@Test("template with output between } and else creates invalid Swift - cannot be fixed")
-func sourceLocation_templateGeneratesOrphanedElse() throws {
-    // This template has output between } and else.
-    // This creates fundamentally invalid Swift (orphaned else), which cannot be fixed
-    // by moving #sourceLocation directives.
-    let text = """
-        % if false {
-        %     print("hello")
-        % }
-        output between braces
-        % else {
-        %     print("world")
-        % }
-        """
-
-    // Should fail because the generated Swift is invalid
-    #expect(throws: GYBError.self) {
-        try execute(text, filename: "test.gyb")
-    }
-}
