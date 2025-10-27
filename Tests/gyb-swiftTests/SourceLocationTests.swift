@@ -15,6 +15,12 @@ func assertFixesCode(
     _ input: String, expected: String,
     sourceLocation: Testing.SourceLocation = #_sourceLocation
 ) {
+    #expect(
+        hasSyntaxErrors(input),
+        "Test problem: the original input was valid",
+        sourceLocation: sourceLocation
+    )
+
     let fixed = fixSourceLocationPlacement(input)
 
     #expect(fixed == expected, sourceLocation: sourceLocation)
@@ -119,7 +125,7 @@ func sourceLocationFixer_betweenBraceAndCatch() {
     assertFixesCode(input, expected: expected)
 }
 
-@Test("directive at error position with malformed array is fixed")
+@Test("directive at error position in array is fixed")
 func sourceLocationFixer_directiveAtErrorPosition() {
     let input = """
         print(
@@ -129,15 +135,15 @@ func sourceLocationFixer_directiveAtErrorPosition() {
         )
         """
 
-    // The malformed array literal with adjacent directive causes errors
-    // The fixer should move or remove the directive
-    let fixed = fixSourceLocationPlacement(input)
+    let expected = """
+        print(
+          [01
+        , 2, 3]
+        )
+          #sourceLocation(file: "foo", line: 6)
+        """
 
-    // The directive should be removed or moved, and code should still have the malformed array
-    // (we can't fix the actual Swift error, just the directive placement)
-    #expect(hasSyntaxErrors(input))
-    // After fixing, directive-related errors should be resolved
-    // The array is still malformed so this may still have errors, but fewer
+    assertFixesCode(input, expected: expected)
 }
 
 @Test("directive after error is moved")
