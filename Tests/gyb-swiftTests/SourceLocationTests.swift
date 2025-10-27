@@ -109,28 +109,6 @@ private func replaceAssertLinePlaceholders(in lines: [String]) -> [String] {
     return result
 }
 
-/// The path to the Swift executable.
-private func swiftExecutablePath() -> String {
-    #if os(Windows)
-    // On Windows, swift.exe should be in PATH
-    return "swift"
-    #else
-    // Try common locations
-    let commonPaths = [
-        "/usr/bin/swift",
-        "/usr/local/bin/swift",
-        ProcessInfo.processInfo.environment["SWIFT_EXEC"] ?? "",
-    ]
-    
-    for path in commonPaths where FileManager.default.fileExists(atPath: path) {
-        return path
-    }
-    
-    // Fall back to using PATH
-    return "swift"
-    #endif
-}
-
 /// Runs `swiftCode` as a script, recording a test failure if it exits with non-zero status.
 private func runSwiftScript(
     _ swiftCode: String, sourceLocation: Testing.SourceLocation
@@ -148,23 +126,15 @@ private func runSwiftScript(
         defer { try? FileManager.default.removeItem(atPath: tempFile) }
         
         let process = Process()
-        let swiftPath = swiftExecutablePath()
         
+        // Use /usr/bin/env to find swift in PATH, which works on all Unix-like systems
         #if os(Windows)
-        process.executableURL = URL(fileURLWithPath: swiftPath)
+        process.executableURL = URL(fileURLWithPath: "swift")
+        process.arguments = [tempFile]
         #else
-        if swiftPath.starts(with: "/") {
-            process.executableURL = URL(fileURLWithPath: swiftPath)
-        } else {
-            // Use shell to resolve from PATH
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            process.arguments = [swiftPath, tempFile]
-        }
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["swift", tempFile]
         #endif
-        
-        if process.arguments == nil {
-            process.arguments = [tempFile]
-        }
         
         try process.run()
         process.waitUntilExit()
