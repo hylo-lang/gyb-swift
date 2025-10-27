@@ -125,28 +125,47 @@ private func runSwiftScript(
         try swiftCode.write(toFile: tempFile, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(atPath: tempFile) }
         
-        let process = Process()
+        let process = processForCommand("swift", arguments: [tempFile])
         
-        // Use /usr/bin/env to find swift in PATH, which works on all Unix-like systems
-        #if os(Windows)
-        process.executableURL = URL(fileURLWithPath: "swift")
-        process.arguments = [tempFile]
-        #else
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["swift", tempFile]
-        #endif
+        // Capture stdout and stderr for diagnostics
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
         
         try process.run()
         process.waitUntilExit()
         
-        #expect(
-            process.terminationStatus == 0,
-            "#sourceLocation directives do not map to correct lines",
-            sourceLocation: sourceLocation
-        )
+        if process.terminationStatus != 0 {
+            // Capture diagnostic output
+            let stdoutData = try? stdoutPipe.fileHandleForReading.readToEnd()
+            let stderrData = try? stderrPipe.fileHandleForReading.readToEnd()
+            
+            let stdout = stdoutData.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+            let stderr = stderrData.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+            
+            var diagnostics = "Exit code: \(process.terminationStatus)"
+            
+            if !stdout.isEmpty {
+                diagnostics += "\nStdout:\n\(stdout)"
+            }
+            
+            if !stderr.isEmpty {
+                diagnostics += "\nStderr:\n\(stderr)"
+            }
+            
+            diagnostics += "\n\nGenerated Swift code:\n\(swiftCode)"
+            
+            #expect(
+                Bool(false),
+                "#sourceLocation directives do not map to correct lines\n\(diagnostics)",
+                sourceLocation: sourceLocation
+            )
+        }
     } catch {
-        Issue.record(
-            "Failed to verify source location directives: \(error)",
+        #expect(
+            Bool(false),
+            "Failed to run Swift script: \(error)\nCode:\n\(swiftCode)",
             sourceLocation: sourceLocation
         )
     }
@@ -212,6 +231,42 @@ func hasSyntaxErrors(_ code: String) -> Bool {
 }
 
 // MARK: - Unit Tests
+
+@Test("Swift executable is accessible")
+func swiftExecutableAccessible() {
+    let process = processForCommand("swift", arguments: ["--version"])
+    
+    let stdoutPipe = Pipe()
+    let stderrPipe = Pipe()
+    process.standardOutput = stdoutPipe
+    process.standardError = stderrPipe
+    
+    do {
+        try process.run()
+        process.waitUntilExit()
+        
+        let stdoutData = try? stdoutPipe.fileHandleForReading.readToEnd()
+        let stderrData = try? stderrPipe.fileHandleForReading.readToEnd()
+        
+        let stdout = stdoutData.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+        let stderr = stderrData.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+        
+        print("Swift version check - Exit code: \(process.terminationStatus)")
+        if !stdout.isEmpty {
+            print("Swift version output:\n\(stdout)")
+        }
+        if !stderr.isEmpty {
+            print("Swift version stderr:\n\(stderr)")
+        }
+        
+        #expect(
+            process.terminationStatus == 0,
+            "Swift executable should be accessible via PATH"
+        )
+    } catch {
+        #expect(Bool(false), "Failed to execute swift --version: \(error)")
+    }
+}
 
 @Test("directive between closing brace and else is fixed")
 func sourceLocationFixer_betweenBraceAndElse() {

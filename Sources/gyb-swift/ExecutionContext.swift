@@ -122,9 +122,8 @@ struct CodeGenerator {
         try swiftCode.write(to: sourceFile, atomically: true, encoding: .utf8)
 
         // Compile
-        let compileProcess = Process()
-        compileProcess.executableURL = URL(fileURLWithPath: "/usr/bin/swiftc")
-        compileProcess.arguments = ["-o", executableFile.path, sourceFile.path]
+        let compileProcess = processForCommand(
+            "swiftc", arguments: ["-o", executableFile.path, sourceFile.path])
 
         let compileErrorPipe = Pipe()
         compileProcess.standardError = compileErrorPipe
