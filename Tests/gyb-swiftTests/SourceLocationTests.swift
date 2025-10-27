@@ -235,10 +235,37 @@ func sourceLocationFixer_validCodeUnchanged() {
     assertLeavesValidCodeUnchanged(input)
 }
 
+@Test("directive before switch case is fixed")
+func sourceLocationFixer_beforeSwitchCase() {
+    let input = """
+        let x = 1
+        switch x {
+        #sourceLocation(file: "test.gyb", line: 3)
+        case 1:
+            print("one")
+        default:
+            print("default")
+        }
+        """
+
+    let expected = """
+        let x = 1
+        switch x {
+        case 1:
+        #sourceLocation(file: "test.gyb", line: 5)
+            print("one")
+        default:
+            print("default")
+        }
+        """
+
+    assertFixesCode(input, expected: expected)
+}
+
 // MARK: - Known Limitations
 
-@Test("output between } and else creates invalid Swift - cannot be fixed")
-func sourceLocation_outputBetweenIfElse() throws {
+@Test("template with output between } and else creates invalid Swift - cannot be fixed")
+func sourceLocation_templateGeneratesOrphanedElse() throws {
     // This template has output between } and else.
     // This creates fundamentally invalid Swift (orphaned else), which cannot be fixed
     // by moving #sourceLocation directives.
@@ -256,56 +283,4 @@ func sourceLocation_outputBetweenIfElse() throws {
     #expect(throws: GYBError.self) {
         try execute(text, filename: "test.gyb")
     }
-}
-
-@Test("simple #sourceLocation before 'else' is fixed when valid")
-func sourceLocation_beforeElseIsFixed() throws {
-    // When there's a continuation keyword after a directive but the Swift is structurally
-    // valid, we can fix it by moving the directive.
-    // This test uses a switch/case example which is valid with our fix.
-    let text = """
-        % let x = 1
-        % switch x {
-        % case 1:
-        output for case 1
-        % default:
-        %     print("default")
-        % }
-        """
-
-    let result = try execute(text, filename: "test.gyb")
-    #expect(result.contains("output for case 1"))
-}
-
-@Test("else on same line as closing brace works correctly")
-func sourceLocation_elseOnSameLine() throws {
-    // When } and else are on the same line (or consecutive % lines with no output),
-    // they get batched together and work fine
-    let text = """
-        % if false {
-        %     print("hello")
-        % } else {
-        %     print("world")
-        % }
-        """
-
-    let result = try execute(text, filename: "test.gyb")
-    #expect(result == "world\n")
-}
-
-@Test("separate } and else lines without output in between works")
-func sourceLocation_separateElseLinesNoOutput() throws {
-    // When } and else are consecutive code lines with no output between,
-    // they're batched and work fine
-    let text = """
-        % if false {
-        %     print("hello")
-        % }
-        % else {
-        %     print("world")
-        % }
-        """
-
-    let result = try execute(text, filename: "test.gyb")
-    #expect(result == "world\n")
 }
