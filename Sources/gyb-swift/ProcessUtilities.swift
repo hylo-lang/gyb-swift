@@ -1,15 +1,15 @@
 import Foundation
 
 #if os(Windows)
-  private let isWindows = true
+  internal let isWindows = true
 #else
-  private let isWindows = false
+  internal let isWindows = false
 #endif
 
 #if os(macOS)
-  private let isMacOS = true
+  internal let isMacOS = true
 #else
-  private let isMacOS = false
+  internal let isMacOS = false
 #endif
 
 /// The environment variables of the running process.

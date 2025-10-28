@@ -110,11 +110,54 @@ struct CodeGenerator {
     return fixSourceLocationPlacement(code)
   }
 
-  /// Executes `ast` with `bindings` by compiling and running generated Swift code.
-  func execute(_ ast: AST, bindings: [String: String] = [:]) throws -> String {
+  /// Executes `ast` with `bindings` using Swift interpreter or compilation.
+  ///
+  /// By default, uses the Swift interpreter on non-Windows platforms for faster execution.
+  /// On Windows or when `forceCompilation` is true, compiles and runs the generated code.
+  func execute(
+    _ ast: AST, bindings: [String: String] = [:], forceCompilation: Bool = false
+  ) throws -> String {
     let swiftCode = generateCompleteProgram(ast, bindings: bindings)
 
-    // Write to temporary file
+    return
+      (isWindows || forceCompilation)
+      ? try executeViaCompilation(swiftCode)
+      : try executeViaInterpreter(swiftCode)
+  }
+
+  /// Executes `swiftCode` using the Swift interpreter (fast).
+  private func executeViaInterpreter(_ swiftCode: String) throws -> String {
+    let tempDir = FileManager.default.temporaryDirectory
+    let temp = tempDir.appendingPathComponent("gyb_\(UUID().uuidString).swift")
+
+    defer {
+      try? FileManager.default.removeItem(at: temp)
+    }
+
+    try swiftCode.write(to: temp, atomically: true, encoding: .utf8)
+
+    let p = try processForCommand("swift", arguments: [temp.platformString])
+
+    let outputPipe = Pipe()
+    let errorPipe = Pipe()
+    p.standardOutput = outputPipe
+    p.standardError = errorPipe
+
+    try p.run()
+    p.waitUntilExit()
+
+    if p.terminationStatus != 0 {
+      let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+      let errorOutput = String(data: errorData, encoding: .utf8) ?? "Unknown error"
+      throw GYBError.executionFailed(filename: filename, errorOutput: errorOutput)
+    }
+
+    let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+    return String(data: outputData, encoding: .utf8) ?? ""
+  }
+
+  /// Executes `swiftCode` by compiling and running the executable.
+  private func executeViaCompilation(_ swiftCode: String) throws -> String {
     let tempDir = FileManager.default.temporaryDirectory
     let uuid = UUID().uuidString
     let sourceFile = tempDir.appendingPathComponent("gyb_\(uuid).swift")
@@ -132,7 +175,6 @@ struct CodeGenerator {
 
     try swiftCode.write(to: sourceFile, atomically: true, encoding: .utf8)
 
-    // Compile the Swift code
     let compileProcess = try processForCommand(
       "swiftc",
       arguments: [
@@ -154,7 +196,6 @@ struct CodeGenerator {
       throw GYBError.executionFailed(filename: filename, errorOutput: errorOutput)
     }
 
-    // Run the compiled executable
     let runProcess = try processForCommand(
       executableFile.platformString, arguments: [])
 
