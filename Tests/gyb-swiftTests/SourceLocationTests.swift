@@ -123,8 +123,10 @@ private func runSwiftScript(
   #endif
 
   do {
-    try swiftCode.write(toFile: tempFile, atomically: true, encoding: .utf8)
     defer { try? FileManager.default.removeItem(atPath: tempFile) }
+
+    // On Windows, atomically: true can cause file locking issues
+    try swiftCode.write(toFile: tempFile, atomically: !isWindows, encoding: .utf8)
 
     let result = try runProcess("swift", arguments: [tempFile])
 

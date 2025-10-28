@@ -135,7 +135,8 @@ struct CodeGenerator {
     }
 
     do {
-      try swiftCode.write(to: temp, atomically: true, encoding: .utf8)
+      // On Windows, atomically: true can cause file locking issues
+      try swiftCode.write(to: temp, atomically: !isWindows, encoding: .utf8)
     } catch {
       throw Failure("Failed to write temporary Swift file to '\(temp.path)'", error)
     }
@@ -146,7 +147,7 @@ struct CodeGenerator {
       throw GYBError.executionFailed(filename: filename, errorOutput: result.stderr)
     }
 
-    return result.stdout
+    return normalizeLineEndings(result.stdout)
   }
 
   /// Executes `swiftCode` by compiling and running the executable.
@@ -155,7 +156,8 @@ struct CodeGenerator {
     defer { cleanupTempFiles(tempFiles) }
 
     do {
-      try swiftCode.write(to: tempFiles.source, atomically: true, encoding: .utf8)
+      // On Windows, atomically: true can cause file locking issues
+      try swiftCode.write(to: tempFiles.source, atomically: !isWindows, encoding: .utf8)
     } catch {
       throw Failure("Failed to write temporary Swift file to '\(tempFiles.source.path)'", error)
     }
@@ -221,7 +223,7 @@ struct CodeGenerator {
       throw GYBError.executionFailed(filename: filename, errorOutput: result.stderr)
     }
 
-    return result.stdout
+    return normalizeLineEndings(result.stdout)
   }
 
   /// Returns the start position of `nodes`'s first element.
@@ -305,4 +307,11 @@ private func formatSourceLocation(_ template: String, filename: String, line: In
     template
     .replacingOccurrences(of: #"\(file)"#, with: filename)
     .replacingOccurrences(of: #"\(line)"#, with: "\(line)")
+}
+
+/// Normalizes line endings to Unix style (`\n`) for cross-platform consistency.
+///
+/// On Windows, Swift's print() outputs `\r\n` line endings, but our tests expect `\n`.
+private func normalizeLineEndings(_ text: String) -> String {
+  return text.replacingOccurrences(of: "\r\n", with: "\n")
 }
