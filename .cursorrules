@@ -36,6 +36,8 @@ Avoid conditional compilation as it makes code that runs on other platforms impo
 
 Never swallow errors. When a function can fail, use `throws` to propagate descriptive errors rather than returning optionals or silently failing. This ensures failures are visible and debuggable.
 
+When invoking `swiftc`, pass `-module-cache-path` with a temporary directory to avoid conflicts when running in parallel (e.g., during `swift test`).
+
 ## Naming Guidelines
 
 Avoid putting type information in non-type names. Variable names should reflect the role of the value, if at all possible. If you can't find a better name for a variable than one that reflects its type, use a single letter name.

@@ -116,26 +116,57 @@ struct CodeGenerator {
 
     // Write to temporary file
     let tempDir = FileManager.default.temporaryDirectory
-    let temp = tempDir.appendingPathComponent("gyb_\(UUID().uuidString).swift")
+    let uuid = UUID().uuidString
+    let sourceFile = tempDir.appendingPathComponent("gyb_\(uuid).swift")
+    let executableFile = tempDir.appendingPathComponent("gyb_\(uuid)")
+    let moduleCacheDir = tempDir.appendingPathComponent("gyb_\(uuid)_modules")
 
     defer {
-      try? FileManager.default.removeItem(at: temp)
+      try? FileManager.default.removeItem(at: sourceFile)
+      try? FileManager.default.removeItem(at: executableFile)
+      try? FileManager.default.removeItem(at: moduleCacheDir)
+      // On Windows, also try to remove .exe
+      try? FileManager.default.removeItem(
+        at: tempDir.appendingPathComponent("gyb_\(uuid).exe"))
     }
 
-    try swiftCode.write(to: temp, atomically: true, encoding: .utf8)
+    try swiftCode.write(to: sourceFile, atomically: true, encoding: .utf8)
 
-    // Execute directly with swift command
-    let p = try processForCommand("swift", arguments: [temp.platformString])
+    // Compile the Swift code
+    let compileProcess = try processForCommand(
+      "swiftc",
+      arguments: [
+        sourceFile.platformString,
+        "-o", executableFile.platformString,
+        "-module-cache-path", moduleCacheDir.platformString,
+      ])
+
+    let compileErrorPipe = Pipe()
+    compileProcess.standardOutput = Pipe()
+    compileProcess.standardError = compileErrorPipe
+
+    try compileProcess.run()
+    compileProcess.waitUntilExit()
+
+    if compileProcess.terminationStatus != 0 {
+      let errorData = compileErrorPipe.fileHandleForReading.readDataToEndOfFile()
+      let errorOutput = String(data: errorData, encoding: .utf8) ?? "Unknown error"
+      throw GYBError.executionFailed(filename: filename, errorOutput: errorOutput)
+    }
+
+    // Run the compiled executable
+    let runProcess = try processForCommand(
+      executableFile.platformString, arguments: [])
 
     let outputPipe = Pipe()
     let errorPipe = Pipe()
-    p.standardOutput = outputPipe
-    p.standardError = errorPipe
+    runProcess.standardOutput = outputPipe
+    runProcess.standardError = errorPipe
 
-    try p.run()
-    p.waitUntilExit()
+    try runProcess.run()
+    runProcess.waitUntilExit()
 
-    if p.terminationStatus != 0 {
+    if runProcess.terminationStatus != 0 {
       let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
       let errorOutput = String(data: errorData, encoding: .utf8) ?? "Unknown error"
       throw GYBError.executionFailed(filename: filename, errorOutput: errorOutput)
