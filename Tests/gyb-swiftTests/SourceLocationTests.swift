@@ -142,8 +142,16 @@ private func runSwiftScript(
       let stdoutData = try? stdoutPipe.fileHandleForReading.readToEnd()
       let stderrData = try? stderrPipe.fileHandleForReading.readToEnd()
 
-      let stdout = stdoutData.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-      let stderr = stderrData.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+      guard
+        let stdout = stdoutData.flatMap({ String(data: $0, encoding: .utf8) })
+      else {
+        throw Failure("swift script stdout not UTF-8 encoded")
+      }
+      guard
+        let stderr = stderrData.flatMap({ String(data: $0, encoding: .utf8) })
+      else {
+        throw Failure("swift script stderr not UTF-8 encoded")
+      }
 
       var diagnostics = "Exit code: \(process.terminationStatus)"
 
@@ -249,8 +257,16 @@ func swiftExecutableAccessible() throws {
     let stdoutData = try? stdoutPipe.fileHandleForReading.readToEnd()
     let stderrData = try? stderrPipe.fileHandleForReading.readToEnd()
 
-    let stdout = stdoutData.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-    let stderr = stderrData.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+    guard
+      let stdout = stdoutData.flatMap({ String(data: $0, encoding: .utf8) })
+    else {
+      throw Failure("swift --version stdout not UTF-8 encoded")
+    }
+    guard
+      let stderr = stderrData.flatMap({ String(data: $0, encoding: .utf8) })
+    else {
+      throw Failure("swift --version stderr not UTF-8 encoded")
+    }
 
     print("Swift version check - Exit code: \(process.terminationStatus)")
     if !stdout.isEmpty {

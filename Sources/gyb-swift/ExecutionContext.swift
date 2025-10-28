@@ -139,11 +139,16 @@ struct CodeGenerator {
     let result = try runProcess("swift", arguments: [temp.platformString])
 
     guard result.exitStatus == 0 else {
-      let errorOutput = String(data: result.stderr, encoding: .utf8) ?? "Unknown error"
+      guard let errorOutput = String(data: result.stderr, encoding: .utf8) else {
+        throw Failure("swift interpreter stderr not UTF-8 encoded")
+      }
       throw GYBError.executionFailed(filename: filename, errorOutput: errorOutput)
     }
 
-    return String(data: result.stdout, encoding: .utf8) ?? ""
+    guard let output = String(data: result.stdout, encoding: .utf8) else {
+      throw Failure("swift interpreter stdout not UTF-8 encoded")
+    }
+    return output
   }
 
   /// Executes `swiftCode` by compiling and running the executable.
@@ -205,7 +210,9 @@ struct CodeGenerator {
       ])
 
     guard result.exitStatus == 0 else {
-      let errorOutput = String(data: result.stderr, encoding: .utf8) ?? "Unknown error"
+      guard let errorOutput = String(data: result.stderr, encoding: .utf8) else {
+        throw Failure("swiftc stderr not UTF-8 encoded")
+      }
       throw GYBError.executionFailed(filename: filename, errorOutput: errorOutput)
     }
   }
@@ -215,11 +222,16 @@ struct CodeGenerator {
     let result = try runProcess(executable.platformString, arguments: [])
 
     guard result.exitStatus == 0 else {
-      let errorOutput = String(data: result.stderr, encoding: .utf8) ?? "Unknown error"
+      guard let errorOutput = String(data: result.stderr, encoding: .utf8) else {
+        throw Failure("compiled executable stderr not UTF-8 encoded")
+      }
       throw GYBError.executionFailed(filename: filename, errorOutput: errorOutput)
     }
 
-    return String(data: result.stdout, encoding: .utf8) ?? ""
+    guard let output = String(data: result.stdout, encoding: .utf8) else {
+      throw Failure("compiled executable stdout not UTF-8 encoded")
+    }
+    return output
   }
 
   /// Returns the start position of `nodes`'s first element.
