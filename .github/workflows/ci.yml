@@ -49,5 +49,5 @@ jobs:
           ${{ runner.os }}-spm-
 
     - name: Run tests
-      run: swift test
+      run: swift test -c release
 
