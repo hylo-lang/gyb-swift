@@ -139,16 +139,10 @@ struct CodeGenerator {
     let result = try runProcess("swift", arguments: [temp.platformString])
 
     guard result.exitStatus == 0 else {
-      guard let errorOutput = String(data: result.stderr, encoding: .utf8) else {
-        throw Failure("swift interpreter stderr not UTF-8 encoded")
-      }
-      throw GYBError.executionFailed(filename: filename, errorOutput: errorOutput)
+      throw GYBError.executionFailed(filename: filename, errorOutput: result.stderr)
     }
 
-    guard let output = String(data: result.stdout, encoding: .utf8) else {
-      throw Failure("swift interpreter stdout not UTF-8 encoded")
-    }
-    return output
+    return result.stdout
   }
 
   /// Executes `swiftCode` by compiling and running the executable.
@@ -210,10 +204,7 @@ struct CodeGenerator {
       ])
 
     guard result.exitStatus == 0 else {
-      guard let errorOutput = String(data: result.stderr, encoding: .utf8) else {
-        throw Failure("swiftc stderr not UTF-8 encoded")
-      }
-      throw GYBError.executionFailed(filename: filename, errorOutput: errorOutput)
+      throw GYBError.executionFailed(filename: filename, errorOutput: result.stderr)
     }
   }
 
@@ -222,16 +213,10 @@ struct CodeGenerator {
     let result = try runProcess(executable.platformString, arguments: [])
 
     guard result.exitStatus == 0 else {
-      guard let errorOutput = String(data: result.stderr, encoding: .utf8) else {
-        throw Failure("compiled executable stderr not UTF-8 encoded")
-      }
-      throw GYBError.executionFailed(filename: filename, errorOutput: errorOutput)
+      throw GYBError.executionFailed(filename: filename, errorOutput: result.stderr)
     }
 
-    guard let output = String(data: result.stdout, encoding: .utf8) else {
-      throw Failure("compiled executable stdout not UTF-8 encoded")
-    }
-    return output
+    return result.stdout
   }
 
   /// Returns the start position of `nodes`'s first element.

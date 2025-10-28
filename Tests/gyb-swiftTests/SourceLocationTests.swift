@@ -126,41 +126,17 @@ private func runSwiftScript(
     try swiftCode.write(toFile: tempFile, atomically: true, encoding: .utf8)
     defer { try? FileManager.default.removeItem(atPath: tempFile) }
 
-    let process = try processForCommand("swift", arguments: [tempFile])
+    let result = try runProcess("swift", arguments: [tempFile])
 
-    // Capture stdout and stderr for diagnostics
-    let stdoutPipe = Pipe()
-    let stderrPipe = Pipe()
-    process.standardOutput = stdoutPipe
-    process.standardError = stderrPipe
+    if result.exitStatus != 0 {
+      var diagnostics = "Exit code: \(result.exitStatus)"
 
-    try process.run()
-    process.waitUntilExit()
-
-    if process.terminationStatus != 0 {
-      // Capture diagnostic output
-      let stdoutData = try? stdoutPipe.fileHandleForReading.readToEnd()
-      let stderrData = try? stderrPipe.fileHandleForReading.readToEnd()
-
-      guard
-        let stdout = stdoutData.flatMap({ String(data: $0, encoding: .utf8) })
-      else {
-        throw Failure("swift script stdout not UTF-8 encoded")
-      }
-      guard
-        let stderr = stderrData.flatMap({ String(data: $0, encoding: .utf8) })
-      else {
-        throw Failure("swift script stderr not UTF-8 encoded")
+      if !result.stdout.isEmpty {
+        diagnostics += "\nStdout:\n\(result.stdout)"
       }
 
-      var diagnostics = "Exit code: \(process.terminationStatus)"
-
-      if !stdout.isEmpty {
-        diagnostics += "\nStdout:\n\(stdout)"
-      }
-
-      if !stderr.isEmpty {
-        diagnostics += "\nStderr:\n\(stderr)"
+      if !result.stderr.isEmpty {
+        diagnostics += "\nStderr:\n\(result.stderr)"
       }
 
       diagnostics += "\n\nGenerated Swift code:\n\(swiftCode)"
@@ -243,41 +219,19 @@ func hasSyntaxErrors(_ code: String) -> Bool {
 
 @Test("Swift executable is accessible")
 func swiftExecutableAccessible() throws {
-  let process = try processForCommand("swift", arguments: ["--version"])
-
-  let stdoutPipe = Pipe()
-  let stderrPipe = Pipe()
-  process.standardOutput = stdoutPipe
-  process.standardError = stderrPipe
-
   do {
-    try process.run()
-    process.waitUntilExit()
+    let result = try runProcess("swift", arguments: ["--version"])
 
-    let stdoutData = try? stdoutPipe.fileHandleForReading.readToEnd()
-    let stderrData = try? stderrPipe.fileHandleForReading.readToEnd()
-
-    guard
-      let stdout = stdoutData.flatMap({ String(data: $0, encoding: .utf8) })
-    else {
-      throw Failure("swift --version stdout not UTF-8 encoded")
+    print("Swift version check - Exit code: \(result.exitStatus)")
+    if !result.stdout.isEmpty {
+      print("Swift version output:\n\(result.stdout)")
     }
-    guard
-      let stderr = stderrData.flatMap({ String(data: $0, encoding: .utf8) })
-    else {
-      throw Failure("swift --version stderr not UTF-8 encoded")
-    }
-
-    print("Swift version check - Exit code: \(process.terminationStatus)")
-    if !stdout.isEmpty {
-      print("Swift version output:\n\(stdout)")
-    }
-    if !stderr.isEmpty {
-      print("Swift version stderr:\n\(stderr)")
+    if !result.stderr.isEmpty {
+      print("Swift version stderr:\n\(result.stderr)")
     }
 
     #expect(
-      process.terminationStatus == 0,
+      result.exitStatus == 0,
       "Swift executable should be accessible via PATH"
     )
   } catch {

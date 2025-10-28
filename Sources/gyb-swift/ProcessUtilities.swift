@@ -35,11 +35,7 @@ private func runProcessForOutput(
     throw Failure("\(executable) \(arguments) exited with \(result.exitStatus)")
   }
 
-  guard let output = String(data: result.stdout, encoding: .utf8) else {
-    throw Failure("output of \(executable) \(arguments) not UTF-8 encoded")
-  }
-
-  return output.trimmingCharacters(in: .whitespacesAndNewlines)
+  return result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
 struct Failure: Error {
@@ -48,6 +44,17 @@ struct Failure: Error {
   init(_ reason: String, _ error: (any Error)? = nil) {
     self.reason = reason
     self.error = error
+  }
+}
+
+extension Pipe {
+  /// Reads all data and decodes as UTF-8, throwing `Failure` if either step fails.
+  func readUTF8(as source: String) throws -> String {
+    let data = self.fileHandleForReading.readDataToEndOfFile()
+    guard let result = String(data: data, encoding: .utf8) else {
+      throw Failure("\(source) not UTF-8 encoded")
+    }
+    return result
   }
 }
 
@@ -122,10 +129,10 @@ func processForCommand(_ command: String, arguments: [String]) throws -> Process
 
 /// Output from running a process.
 struct ProcessOutput {
-  /// Standard output data.
-  let stdout: Data
-  /// Standard error data.
-  let stderr: Data
+  /// Standard output as UTF-8 string.
+  let stdout: String
+  /// Standard error as UTF-8 string.
+  let stderr: String
   /// Process exit status.
   let exitStatus: Int32
 }
@@ -143,8 +150,8 @@ func runProcess(_ command: String, arguments: [String]) throws -> ProcessOutput 
   process.waitUntilExit()
 
   return ProcessOutput(
-    stdout: stdoutPipe.fileHandleForReading.readDataToEndOfFile(),
-    stderr: stderrPipe.fileHandleForReading.readDataToEndOfFile(),
+    stdout: try stdoutPipe.readUTF8(as: "\(command) stdout"),
+    stderr: try stderrPipe.readUTF8(as: "\(command) stderr"),
     exitStatus: process.terminationStatus
   )
 }
