@@ -105,26 +105,28 @@ private func sdkRootPath() throws -> String {
   return path
 }
 
-/// Creates a `Process` configured to execute the given command via PATH resolution.
+/// Returns a `Process` that runs `command` with the given `arguments`.
 ///
-/// On Unix-like systems, uses `/usr/bin/env` to resolve the command from PATH.
-/// On Windows, searches PATH explicitly to find the full executable path.
-/// On macOS, sets SDKROOT environment variable if not already set.
+/// If `command` contains no path separators, it will be found in
+/// `PATH`.  On macOS, ensures SDKROOT is set in the environment in
+/// case the command needs it.
 func processForCommand(_ command: String, arguments: [String]) throws -> Process {
   let p = Process()
 
-  if isWindows {
-    // On Windows, search PATH explicitly to avoid looking in current directory
-    let executablePath = try findWindowsExecutableInPath(command)
-    p.executableURL = URL(fileURLWithPath: executablePath)
-    p.arguments = arguments
+  p.arguments = arguments
+  // If command contains path separators, use it directly without PATH search
+  if command.contains(isWindows ? "\\" : "/") {
+    p.executableURL = URL(fileURLWithPath: command)
   } else {
-    // On Unix-like systems, use /usr/bin/env which searches PATH safely
-    p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-    p.arguments = [command] + arguments
+    if isWindows {
+      p.executableURL = URL(fileURLWithPath: try findWindowsExecutableInPath(command))
+    } else {
+      // Let env find and run the executable.
+      p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+      p.arguments = [command] + arguments
+    }
   }
 
-  // On macOS, ensure SDKROOT is set for Swift compilation
   if isMacOS {
     var environment = ProcessInfo.processInfo.environment
     if environment["SDKROOT"] == nil {
