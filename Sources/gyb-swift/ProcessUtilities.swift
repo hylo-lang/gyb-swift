@@ -47,17 +47,6 @@ struct Failure: Error {
   }
 }
 
-extension Pipe {
-  /// Reads all data and decodes as UTF-8, throwing `Failure` if either step fails.
-  func readUTF8(as source: String) throws -> String {
-    let data = self.fileHandleForReading.readDataToEndOfFile()
-    guard let result = String(data: data, encoding: .utf8) else {
-      throw Failure("\(source) not UTF-8 encoded")
-    }
-    return result
-  }
-}
-
 /// Searches for an executable in PATH on Windows using `where.exe`.
 ///
 /// Returns the full path to the executable.
@@ -147,11 +136,59 @@ func runProcess(_ command: String, arguments: [String]) throws -> ProcessOutput 
   process.standardError = stderrPipe
 
   try process.run()
+
+  // Read pipes on background threads to prevent deadlock if output exceeds pipe buffer size.
+  // The child process will block if pipe buffers fill up, so we must drain them continuously.
+  let stdoutData = readPipeInBackground(stdoutPipe)
+  let stderrData = readPipeInBackground(stderrPipe)
+
   process.waitUntilExit()
 
+  // Retrieve the data (blocks until background reads complete)
+  let stdout = try decodeUTF8(stdoutData(), as: "\(command) stdout")
+  let stderr = try decodeUTF8(stderrData(), as: "\(command) stderr")
+
   return ProcessOutput(
-    stdout: try stdoutPipe.readUTF8(as: "\(command) stdout"),
-    stderr: try stderrPipe.readUTF8(as: "\(command) stderr"),
+    stdout: stdout,
+    stderr: stderr,
     exitStatus: process.terminationStatus
   )
+}
+
+/// Starts reading all data from `pipe` using event-driven I/O.
+///
+/// Returns a closure that blocks until reading completes and returns the data.
+/// This prevents pipe buffer deadlocks by draining pipes while the process runs.
+/// Uses non-blocking I/O with readability handlers for efficiency.
+private func readPipeInBackground(_ pipe: Pipe) -> () -> Data {
+  // Box to safely share mutable state across concurrency boundary
+  final class DataBox: @unchecked Sendable {
+    var data = Data()
+  }
+  let box = DataBox()
+  let group = DispatchGroup()
+
+  group.enter()
+  pipe.fileHandleForReading.readabilityHandler = { handle in
+    let chunk = handle.availableData
+    if chunk.isEmpty {  // EOF on the pipe
+      pipe.fileHandleForReading.readabilityHandler = nil
+      group.leave()
+    } else {
+      box.data.append(chunk)
+    }
+  }
+
+  return {
+    group.wait()
+    return box.data
+  }
+}
+
+/// Decodes `data` as UTF-8, throwing `Failure` with `source` name if it fails.
+private func decodeUTF8(_ data: Data, as source: String) throws -> String {
+  guard let result = String(data: data, encoding: .utf8) else {
+    throw Failure("\(source) not UTF-8 encoded")
+  }
+  return result
 }
