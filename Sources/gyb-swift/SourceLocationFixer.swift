@@ -89,11 +89,11 @@ private class UnexpectedVisitor: SyntaxVisitor {
 ///
 /// Returns the line indices (0-based) where problematic directives appear.
 private func parseAndFindProblematicDirectives(_ code: String) -> [Int] {
-  let sourceFile = Parser.parse(source: code)
-  let converter = SourceLocationConverter(fileName: "", tree: sourceFile)
-  let tokens = Array(sourceFile.tokens(viewMode: .sourceAccurate))
+  let parsed = Parser.parse(source: code)
+  let converter = SourceLocationConverter(fileName: "", tree: parsed)
+  let tokens = Array(parsed.tokens(viewMode: .sourceAccurate))
   let visitor = UnexpectedVisitor(converter: converter, tokens: tokens)
-  visitor.walk(sourceFile)
+  visitor.walk(parsed)
 
   return visitor.problematicLineIndices.sorted()
 }
@@ -182,9 +182,9 @@ private func transferTriviaToSurroundingTokens(
 private func findDirectiveLineAfterInsertion(
   _ tokens: [TokenSyntax], at tokenIndex: Int, in code: String
 ) -> Int? {
-  let sourceFile = Parser.parse(source: code)
-  let converter = SourceLocationConverter(fileName: "", tree: sourceFile)
-  let tokensAfterInsertion = Array(sourceFile.tokens(viewMode: .sourceAccurate))
+  let parsed = Parser.parse(source: code)
+  let converter = SourceLocationConverter(fileName: "", tree: parsed)
+  let tokensAfterInsertion = Array(parsed.tokens(viewMode: .sourceAccurate))
 
   guard tokenIndex < tokensAfterInsertion.count else { return nil }
 
@@ -262,9 +262,9 @@ private func fixFirstProblematicDirective(
     return code
   }
 
-  let sourceFile = Parser.parse(source: code)
-  let converter = SourceLocationConverter(fileName: "", tree: sourceFile)
-  var tokens = Array(sourceFile.tokens(viewMode: .sourceAccurate))
+  let parsed = Parser.parse(source: code)
+  let converter = SourceLocationConverter(fileName: "", tree: parsed)
+  var tokens = Array(parsed.tokens(viewMode: .sourceAccurate))
 
   guard
     let startIdx = findDirectiveTokenIndex(

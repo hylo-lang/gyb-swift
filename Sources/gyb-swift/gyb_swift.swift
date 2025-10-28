@@ -133,8 +133,8 @@ struct GYBSwift: ParsableCommand {
       filename = "stdin"
     } else {
       // Read from file
-      let url = URL(fileURLWithPath: file)
-      templateText = try String(contentsOf: url, encoding: .utf8)
+      let source = URL(fileURLWithPath: file)
+      templateText = try String(contentsOf: source, encoding: .utf8)
       filename = file
     }
 
@@ -180,8 +180,8 @@ struct GYBSwift: ParsableCommand {
     if output == "-" {
       print(result, terminator: "")
     } else {
-      let outputURL = URL(fileURLWithPath: output)
-      try result.write(to: outputURL, atomically: true, encoding: .utf8)
+      let destination = URL(fileURLWithPath: output)
+      try result.write(to: destination, atomically: true, encoding: .utf8)
     }
   }
 }

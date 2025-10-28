@@ -116,26 +116,26 @@ struct CodeGenerator {
 
     // Write to temporary file
     let tempDir = FileManager.default.temporaryDirectory
-    let sourceFile = tempDir.appendingPathComponent("gyb_\(UUID().uuidString).swift")
+    let temp = tempDir.appendingPathComponent("gyb_\(UUID().uuidString).swift")
 
     defer {
-      try? FileManager.default.removeItem(at: sourceFile)
+      try? FileManager.default.removeItem(at: temp)
     }
 
-    try swiftCode.write(to: sourceFile, atomically: true, encoding: .utf8)
+    try swiftCode.write(to: temp, atomically: true, encoding: .utf8)
 
     // Execute directly with swift command
-    let process = processForCommand("swift", arguments: [sourceFile.platformString])
+    let p = processForCommand("swift", arguments: [temp.platformString])
 
     let outputPipe = Pipe()
     let errorPipe = Pipe()
-    process.standardOutput = outputPipe
-    process.standardError = errorPipe
+    p.standardOutput = outputPipe
+    p.standardError = errorPipe
 
-    try process.run()
-    process.waitUntilExit()
+    try p.run()
+    p.waitUntilExit()
 
-    if process.terminationStatus != 0 {
+    if p.terminationStatus != 0 {
       let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
       let errorOutput = String(data: errorData, encoding: .utf8) ?? "Unknown error"
       throw GYBError.executionFailed(filename: filename, errorOutput: errorOutput)

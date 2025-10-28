@@ -34,6 +34,10 @@ Always fix all warnings.
 
 Avoid conditional compilation as it makes code that runs on other platforms impossible to typecheck.  Set global constants to identify platforms and use runtime branches.
 
+## Naming Guidelines
+
+Avoid putting type information in non-type names. Variable names should reflect the role of the value, if at all possible. If you can't find a better name for a variable than one that reflects its type, use a single letter name.
+
 ## Documentation Guidelines
 
 - Every declaration outside a function body needs a doc comment except for tests and declarations that satisfy protocol requirements.

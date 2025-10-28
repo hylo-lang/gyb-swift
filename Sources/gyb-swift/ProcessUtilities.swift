@@ -18,21 +18,21 @@ import Foundation
 private func runProcessForOutput(
   _ executable: String, arguments: [String]
 ) -> String? {
-  let process = Process()
-  process.executableURL = URL(fileURLWithPath: executable)
-  process.arguments = arguments
+  let p = Process()
+  p.executableURL = URL(fileURLWithPath: executable)
+  p.arguments = arguments
 
-  let pipe = Pipe()
-  process.standardOutput = pipe
-  process.standardError = Pipe()
+  let output = Pipe()
+  p.standardOutput = output
+  p.standardError = Pipe()
 
   do {
-    try process.run()
-    process.waitUntilExit()
+    try p.run()
+    p.waitUntilExit()
 
-    guard process.terminationStatus == 0 else { return nil }
+    guard p.terminationStatus == 0 else { return nil }
 
-    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+    let data = output.fileHandleForReading.readDataToEndOfFile()
     return String(data: data, encoding: .utf8)?.trimmingCharacters(
       in: .whitespacesAndNewlines)
   } catch {
@@ -83,21 +83,21 @@ private func sdkRootPath() -> String? {
 /// On Windows, searches PATH explicitly to find the full executable path.
 /// On macOS, sets SDKROOT environment variable if not already set.
 func processForCommand(_ command: String, arguments: [String]) -> Process {
-  let process = Process()
+  let p = Process()
 
   if isWindows {
     // On Windows, search PATH explicitly to avoid looking in current directory
     if let executablePath = findExecutableInPath(command) {
-      process.executableURL = URL(fileURLWithPath: executablePath)
+      p.executableURL = URL(fileURLWithPath: executablePath)
     } else {
       // Fall back to command as-is if not found in PATH
-      process.executableURL = URL(fileURLWithPath: command)
+      p.executableURL = URL(fileURLWithPath: command)
     }
-    process.arguments = arguments
+    p.arguments = arguments
   } else {
     // On Unix-like systems, use /usr/bin/env which searches PATH safely
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-    process.arguments = [command] + arguments
+    p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+    p.arguments = [command] + arguments
   }
 
   // On macOS, ensure SDKROOT is set for Swift compilation
@@ -105,9 +105,9 @@ func processForCommand(_ command: String, arguments: [String]) -> Process {
     var environment = ProcessInfo.processInfo.environment
     if environment["SDKROOT"] == nil, let sdkRoot = sdkRootPath() {
       environment["SDKROOT"] = sdkRoot
-      process.environment = environment
+      p.environment = environment
     }
   }
 
-  return process
+  return p
 }

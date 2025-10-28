@@ -194,7 +194,7 @@ struct TemplateTokens: Sequence, IteratorProtocol {
 /// or `code.endIndex` if none exists, using SwiftSyntax to ignore braces in strings and comments.
 func tokenizeSwiftToUnmatchedCloseCurly(_ code: Substring) -> String.Index {
   // Parse the Swift code (SwiftSyntax requires a String)
-  let source = Parser.parse(source: String(code))
+  let parsed = Parser.parse(source: String(code))
 
   // Walk the syntax tree looking for braces
   class BraceVisitor: SyntaxVisitor {
@@ -223,7 +223,7 @@ func tokenizeSwiftToUnmatchedCloseCurly(_ code: Substring) -> String.Index {
   }
 
   let visitor = BraceVisitor(viewMode: .all)
-  visitor.walk(source)
+  visitor.walk(parsed)
 
   if let utf8Offset = visitor.closeBraceOffset {
     // Convert UTF-8 offset to String.Index efficiently using the Substring's utf8 view
