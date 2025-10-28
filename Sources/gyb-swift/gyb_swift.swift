@@ -165,7 +165,7 @@ struct GYBSwift: ParsableCommand {
     // Change to template's directory for relative imports
     if file != "-" {
       let templateDir = URL(fileURLWithPath: file).deletingLastPathComponent()
-      FileManager.default.changeCurrentDirectoryPath(templateDir.path)
+      _ = FileManager.default.changeCurrentDirectoryPath(templateDir.path)
     }
 
     // Execute template
