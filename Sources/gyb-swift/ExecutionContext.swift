@@ -141,15 +141,15 @@ struct CodeGenerator {
         "-module-cache-path", moduleCacheDir.platformString,
       ])
 
-    let compileErrorPipe = Pipe()
+    let compileError = Pipe()
     compileProcess.standardOutput = Pipe()
-    compileProcess.standardError = compileErrorPipe
+    compileProcess.standardError = compileError
 
     try compileProcess.run()
     compileProcess.waitUntilExit()
 
     if compileProcess.terminationStatus != 0 {
-      let errorData = compileErrorPipe.fileHandleForReading.readDataToEndOfFile()
+      let errorData = compileError.fileHandleForReading.readDataToEndOfFile()
       let errorOutput = String(data: errorData, encoding: .utf8) ?? "Unknown error"
       throw GYBError.executionFailed(filename: filename, errorOutput: errorOutput)
     }
