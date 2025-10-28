@@ -1,36 +1,86 @@
 import Foundation
 
-/// Searches for an executable in PATH.
+#if os(Windows)
+  /// Searches for an executable in PATH on Windows using `where.exe`.
+  ///
+  /// Returns the full path to the executable, or `nil` if not found.
+  private func findExecutableInPathWindows(_ command: String) -> String? {
+    guard let pathEnv = ProcessInfo.processInfo.environment["PATH"],
+      let winDir = ProcessInfo.processInfo.environment["WINDIR"]
+    else {
+      return nil
+    }
+
+    let whereCommand = (winDir as NSString).appendingPathComponent("System32")
+    let whereExe = (whereCommand as NSString).appendingPathComponent("where.exe")
+
+    guard FileManager.default.fileExists(atPath: whereExe) else {
+      return nil
+    }
+
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: whereExe)
+    process.arguments = [command]
+
+    // Set the PATH for where.exe to use
+    var environment = ProcessInfo.processInfo.environment
+    environment["Path"] = pathEnv
+    process.environment = environment
+
+    let pipe = Pipe()
+    process.standardOutput = pipe
+    process.standardError = Pipe()
+
+    do {
+      try process.run()
+      process.waitUntilExit()
+
+      guard process.terminationStatus == 0 else { return nil }
+
+      let data = pipe.fileHandleForReading.readDataToEndOfFile()
+      if let output = String(data: data, encoding: .utf8) {
+        // where.exe returns the first match on the first line
+        return output.split(separator: "\n", maxSplits: 1).first.map {
+          String($0).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+      }
+    } catch {
+      return nil
+    }
+
+    return nil
+  }
+#endif
+
+/// Searches for an executable in PATH on Unix-like systems.
 ///
 /// Returns the full path to the executable, or `nil` if not found.
-private func findExecutableInPath(_ command: String) -> String? {
+private func findExecutableInPathUnix(_ command: String) -> String? {
   guard let pathEnv = ProcessInfo.processInfo.environment["PATH"] else {
     return nil
   }
 
-  #if os(Windows)
-    let pathSeparator = ";"
-    let pathExtensions =
-      (ProcessInfo.processInfo.environment["PATHEXT"] ?? ".COM;.EXE;.BAT;.CMD")
-      .split(separator: ";")
-      .map { String($0) }
-  #else
-    let pathSeparator = ":"
-    let pathExtensions = [""]
-  #endif
-
-  let searchPaths = pathEnv.split(separator: Character(pathSeparator)).map { String($0) }
+  let searchPaths = pathEnv.split(separator: ":").map { String($0) }
 
   for searchPath in searchPaths {
-    for ext in pathExtensions {
-      let candidatePath = (searchPath as NSString).appendingPathComponent(command + ext)
-      if FileManager.default.isExecutableFile(atPath: candidatePath) {
-        return candidatePath
-      }
+    let candidatePath = (searchPath as NSString).appendingPathComponent(command)
+    if FileManager.default.isExecutableFile(atPath: candidatePath) {
+      return candidatePath
     }
   }
 
   return nil
+}
+
+/// Searches for an executable in PATH.
+///
+/// Returns the full path to the executable, or `nil` if not found.
+private func findExecutableInPath(_ command: String) -> String? {
+  #if os(Windows)
+    return findExecutableInPathWindows(command)
+  #else
+    return findExecutableInPathUnix(command)
+  #endif
 }
 
 /// The SDK root path for macOS, or `nil` if not on macOS or unable to determine.
