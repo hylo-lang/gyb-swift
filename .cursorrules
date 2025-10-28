@@ -32,6 +32,8 @@ Avoid raw loops and use algorithms instead where possible.
 
 Always fix all warnings.
 
+Avoid conditional compilation as it makes code that runs on other platforms impossible to typecheck.  Set global constants to identify platforms and use runtime branches.
+
 ## Documentation Guidelines
 
 - Every declaration outside a function body needs a doc comment except for tests and declarations that satisfy protocol requirements.
