@@ -128,7 +128,7 @@ private func runSwiftScript(
     // On Windows, atomically: true can cause file locking issues
     try swiftCode.write(toFile: tempFile, atomically: !isWindows, encoding: .utf8)
 
-    let result = try runProcess("swift", arguments: [tempFile])
+    let result = try resultsOfRunning(["swift", tempFile])
 
     if result.exitStatus != 0 {
       var diagnostics = "Exit code: \(result.exitStatus)"
@@ -222,7 +222,7 @@ func hasSyntaxErrors(_ code: String) -> Bool {
 @Test("Swift executable is accessible")
 func swiftExecutableAccessible() throws {
   do {
-    let result = try runProcess("swift", arguments: ["--version"])
+    let result = try resultsOfRunning(["swift", "--version"])
 
     print("Swift version check - Exit code: \(result.exitStatus)")
     if !result.stdout.isEmpty {

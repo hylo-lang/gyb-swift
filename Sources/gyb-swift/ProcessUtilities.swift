@@ -25,14 +25,20 @@ private let environmentVariables =
     })
   : ProcessInfo.processInfo.environment
 
-/// Runs `executable` with `arguments`, returning stdout trimmed of whitespace.
-private func runProcessForOutput(
-  _ executable: String, arguments: [String]
+/// Returns the standard output from running `commandLine` passing
+/// `arguments`, trimmed of whitespace.
+///
+/// If `commandLine` contains no path separators, it is looked up in `PATH`.
+///
+/// - Parameter setSKDRoot: true iff xcrun should be used to set the SDKROOT
+///   environment variable for the process.
+private func standardOutputOf(
+  _ commandLine: [String], setSDKRoot: Bool = true
 ) throws -> String {
-  let result = try runProcess(executable, arguments: arguments)
+  let result = try resultsOfRunning(commandLine, setSDKRoot: setSDKRoot)
 
   guard result.exitStatus == 0 else {
-    throw Failure("\(executable) \(arguments) exited with \(result.exitStatus)")
+    throw Failure("\(commandLine) exited with \(result.exitStatus)")
   }
 
   return result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -70,7 +76,7 @@ private func findWindowsExecutableInPath(_ command: String) throws -> String {
     throw Failure("\(whereExe) doesn't exist")
   }
 
-  let output = try runProcessForOutput(whereExe, arguments: [command])
+  let output = try standardOutputOf([whereExe, command])
 
   // where.exe returns the first match on the first line
   guard let r = output.split(separator: "\n", maxSplits: 1).first else {
@@ -79,53 +85,35 @@ private func findWindowsExecutableInPath(_ command: String) throws -> String {
   return String(r)
 }
 
+/// The value to set for SDKROOT in subprocess environments on macOS.
+internal let swiftSDKRoot: String =
+  if isMacOS {
+    ProcessInfo.processInfo.environment["SDKROOT"]
+      ?? { () -> String in
+        do {
+          // Don't set SDKROOT in the environment to avoid infinite recursion.
+          return try standardOutputOf(
+            ["/usr/bin/xcrun", "--show-sdk-path"], setSDKRoot: false)
+        } catch let e {
+          fatalError("\(e)")
+        }
+      }()
+  } else {
+    "UNUSED"
+  }
+
 /// The SDK root path on macOS.
 ///
 /// - Precondition: running on macOS
 private func sdkRootPath() throws -> String {
   precondition(isMacOS)
-  let path = try runProcessForOutput("/usr/bin/xcrun", arguments: ["--show-sdk-path"])
+  let path = try standardOutputOf(["/usr/bin/xcrun", "--show-sdk-path"])
   if path.isEmpty { throw Failure("'xcrun --show-sdk-path' returned empty string") }
   return path
 }
 
-/// Returns a `Process` that runs `command` with the given `arguments`.
-///
-/// If `command` contains no path separators, it will be found in
-/// `PATH`.  On macOS, ensures SDKROOT is set in the environment in
-/// case the command needs it.
-func processForCommand(_ command: String, arguments: [String]) throws -> Process {
-  let p = Process()
-
-  p.arguments = arguments
-  // If command contains path separators, use it directly without PATH search
-  if command.contains(isWindows ? "\\" : "/") {
-    p.executableURL = URL(fileURLWithPath: command)
-  } else {
-    if isWindows {
-      p.executableURL = URL(fileURLWithPath: try findWindowsExecutableInPath(command))
-    } else {
-      // Let env find and run the executable.
-      p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-      p.arguments = [command] + arguments
-    }
-  }
-
-  // Set SDKROOT on macOS if needed, but skip for xcrun itself to prevent infinite recursion
-  let isXcrun = command.hasSuffix("/xcrun") || command == "xcrun"
-  if isMacOS && !isXcrun {
-    var environment = ProcessInfo.processInfo.environment
-    if environment["SDKROOT"] == nil {
-      environment["SDKROOT"] = try sdkRootPath()
-      p.environment = environment
-    }
-  }
-
-  return p
-}
-
 /// Output from running a process.
-struct ProcessOutput {
+struct ProcessResults {
   /// Standard output as UTF-8 string.
   let stdout: String
   /// Standard error as UTF-8 string.
@@ -134,17 +122,46 @@ struct ProcessOutput {
   let exitStatus: Int32
 }
 
-/// Runs `command` with `arguments`, returning captured output and exit status.
-func runProcess(_ command: String, arguments: [String]) throws -> ProcessOutput {
-  let process = try processForCommand(command, arguments: arguments)
+/// Returns the result of running `command` passing `arguments`.
+///
+/// If `commandLine[0]` contains no path separators, the executable is
+/// looked up in `PATH`.
+///
+/// - Parameter setSKDRoot: true iff xcrun should be used to set the SDKROOT
+///   environment variable for the process.
+func resultsOfRunning(_ commandLine: [String], setSDKRoot: Bool = true) throws -> ProcessResults {
+  let p = Process()
+
+  let command = commandLine.first!
+  var arguments = Array(commandLine.dropFirst())
+
+  // If executable contains path separators, use it directly without PATH search
+  if command.contains(isWindows ? "\\" : "/") {
+    p.executableURL = URL(fileURLWithPath: command)
+  } else {
+    if isWindows {
+      p.executableURL = URL(fileURLWithPath: try findWindowsExecutableInPath(command))
+    } else {
+      // Let env find and run the executable.
+      p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+      arguments.insert(command, at: 0)
+    }
+  }
+  p.arguments = Array(arguments)
+
+  if setSDKRoot && isMacOS {
+    var e = ProcessInfo.processInfo.environment
+    e["SDKROOT"] = swiftSDKRoot
+    p.environment = e
+  }
 
   let stdoutPipe = Pipe()
   let stderrPipe = Pipe()
-  process.standardOutput = stdoutPipe
-  process.standardError = stderrPipe
+  p.standardOutput = stdoutPipe
+  p.standardError = stderrPipe
 
   do {
-    try process.run()
+    try p.run()
   } catch {
     let commandLine =
       arguments.isEmpty
@@ -158,16 +175,16 @@ func runProcess(_ command: String, arguments: [String]) throws -> ProcessOutput 
   let stdoutData = readPipeInBackground(stdoutPipe)
   let stderrData = readPipeInBackground(stderrPipe)
 
-  process.waitUntilExit()
+  p.waitUntilExit()
 
   // Retrieve the data (blocks until background reads complete)
   let stdout = try decodeUTF8(stdoutData(), as: "\(command) stdout")
   let stderr = try decodeUTF8(stderrData(), as: "\(command) stderr")
 
-  return ProcessOutput(
+  return ProcessResults(
     stdout: stdout,
     stderr: stderr,
-    exitStatus: process.terminationStatus
+    exitStatus: p.terminationStatus
   )
 }
 

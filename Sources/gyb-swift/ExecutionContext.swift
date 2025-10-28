@@ -141,7 +141,7 @@ struct CodeGenerator {
       throw Failure("Failed to write temporary Swift file to '\(temp.path)'", error)
     }
 
-    let result = try runProcess("swift", arguments: [temp.platformString])
+    let result = try resultsOfRunning(["swift", temp.platformString])
 
     guard result.exitStatus == 0 else {
       throw GYBError.executionFailed(filename: filename, errorOutput: result.stderr)
@@ -202,9 +202,8 @@ struct CodeGenerator {
 
   /// Compiles Swift source file to executable.
   private func compileSwiftCode(source: URL, output: URL, moduleCache: URL) throws {
-    let result = try runProcess(
-      "swiftc",
-      arguments: [
+    let result = try resultsOfRunning(
+      ["swiftc",
         source.platformString,
         "-o", output.platformString,
         "-module-cache-path", moduleCache.platformString,
@@ -217,7 +216,7 @@ struct CodeGenerator {
 
   /// Runs compiled executable and returns its output.
   private func runCompiledExecutable(_ executable: URL) throws -> String {
-    let result = try runProcess(executable.platformString, arguments: [])
+    let result = try resultsOfRunning([executable.platformString])
 
     guard result.exitStatus == 0 else {
       throw GYBError.executionFailed(filename: filename, errorOutput: result.stderr)
