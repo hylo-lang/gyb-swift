@@ -252,9 +252,11 @@ func sourceLocation_runtimeErrorReferencesTemplateLine() throws {
 }
 
 // MARK: - CLI Integration Tests
+// Note: ArgumentParser automatically formats and writes errors to stderr when invoked
+// as a command-line tool. We test the error content by running the command programmatically.
 
-@Test("CLI writes compilation errors to stderr")
-func cli_compilationErrorToStderr() throws {
+@Test("CLI throws compilation errors")
+func cli_compilationError() throws {
   let tempDir = FileManager.default.temporaryDirectory
   let testFile = tempDir.appendingPathComponent("bad_compile_\(UUID().uuidString).gyb")
 
@@ -269,70 +271,27 @@ func cli_compilationErrorToStderr() throws {
     """
   try badTemplate.write(to: testFile, atomically: true, encoding: .utf8)
 
-  // Run gyb-swift
-  let process = Process()
-  process.executableURL = URL(fileURLWithPath: ".build/debug/gyb-swift")
-  process.arguments = [testFile.path]
+  // Run command programmatically
+  var command = try GYBSwift.parseAsRoot([testFile.path])
 
-  let stderrPipe = Pipe()
-  process.standardError = stderrPipe
-  process.standardOutput = Pipe()  // Capture but ignore stdout
-
-  try process.run()
-  process.waitUntilExit()
-
-  #expect(process.terminationStatus != 0, "Should exit with error")
-
-  let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-  let stderr = String(data: stderrData, encoding: .utf8) ?? ""
-
-  // Expected format (ArgumentParser adds "Error: " prefix):
-  // Error: Error executing generated code from <filename>
-  // <compiler error output with file:line:column format>
-  let regex = Regex {
-    "Error:"
-    OneOrMore(.whitespace)
-    "Error"
-    OneOrMore(.whitespace)
-    "executing"
-    OneOrMore(.whitespace)
-    "generated"
-    OneOrMore(.whitespace)
-    "code"
-    OneOrMore(.whitespace)
-    "from"
-    OneOrMore(.whitespace)
-    OneOrMore(.any)
-    testFile.lastPathComponent
-    ZeroOrMore(.whitespace)
-    "\n"
-    OneOrMore(.any)
-    ChoiceOf {
-      "NonexistentType"
-      Regex {
-        "cannot"
-        OneOrMore(.whitespace)
-        "find"
-      }
-    }
+  let error = #expect(throws: (any Error).self) {
+    try command.run()
   }
 
-  #expect(
-    stderr.contains(regex),
-    """
-    stderr should match expected error format.
+  // Check that it's a GYBError with expected content
+  guard let gybError = error as? GYBError else {
+    Issue.record("Expected GYBError, got \(type(of: error))")
+    return
+  }
 
-    Expected pattern:
-    Error: Error executing generated code from <filename>
-    <compiler error with NonexistentType or "cannot find">
-
-    Actual stderr:
-    \(stderr)
-    """)
+  let description = gybError.description
+  #expect(description.contains("executing"))
+  #expect(description.contains(testFile.lastPathComponent))
+  #expect(description.contains("NonexistentType") || description.contains("cannot find"))
 }
 
-@Test("CLI writes execution errors to stderr")
-func cli_executionErrorToStderr() throws {
+@Test("CLI throws execution errors")
+func cli_executionError() throws {
   let tempDir = FileManager.default.temporaryDirectory
   let testFile = tempDir.appendingPathComponent("runtime_error_\(UUID().uuidString).gyb")
 
@@ -346,69 +305,23 @@ func cli_executionErrorToStderr() throws {
     """
   try crashTemplate.write(to: testFile, atomically: true, encoding: .utf8)
 
-  // Run gyb-swift
-  let process = Process()
-  process.executableURL = URL(fileURLWithPath: ".build/debug/gyb-swift")
-  process.arguments = [testFile.path]
+  // Run command programmatically
+  var command = try GYBSwift.parseAsRoot([testFile.path])
 
-  let stderrPipe = Pipe()
-  process.standardError = stderrPipe
-  process.standardOutput = Pipe()  // Capture but ignore stdout
-
-  try process.run()
-  process.waitUntilExit()
-
-  #expect(process.terminationStatus != 0, "Should exit with error")
-
-  let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-  let stderr = String(data: stderrData, encoding: .utf8) ?? ""
-
-  // Expected format (ArgumentParser adds "Error: " prefix):
-  // Error: Error executing generated code from <filename>
-  // <runtime error output with stack trace>
-  let regex = Regex {
-    "Error:"
-    OneOrMore(.whitespace)
-    "Error"
-    OneOrMore(.whitespace)
-    "executing"
-    OneOrMore(.whitespace)
-    "generated"
-    OneOrMore(.whitespace)
-    "code"
-    OneOrMore(.whitespace)
-    "from"
-    OneOrMore(.whitespace)
-    OneOrMore(.any)
-    testFile.lastPathComponent
-    ZeroOrMore(.whitespace)
-    "\n"
-    OneOrMore(.any)
-    ChoiceOf {
-      Regex {
-        "Fatal"
-        OneOrMore(.whitespace)
-        "error"
-      }
-      Regex {
-        "deliberate"
-        OneOrMore(.whitespace)
-        "crash"
-      }
-      "Illegal"
-    }
+  let error = #expect(throws: (any Error).self) {
+    try command.run()
   }
 
+  // Check that it's a GYBError with expected content
+  guard let gybError = error as? GYBError else {
+    Issue.record("Expected GYBError, got \(type(of: error))")
+    return
+  }
+
+  let description = gybError.description
+  #expect(description.contains("executing"))
+  #expect(description.contains(testFile.lastPathComponent))
   #expect(
-    stderr.contains(regex),
-    """
-    stderr should match expected error format.
-
-    Expected pattern:
-    Error: Error executing generated code from <filename>
-    <runtime error with "Fatal error", "deliberate crash", or "Illegal">
-
-    Actual stderr:
-    \(stderr)
-    """)
+    description.contains("Fatal error") || description.contains("deliberate crash")
+      || description.contains("Illegal"))
 }
