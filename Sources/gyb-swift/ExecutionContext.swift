@@ -1,6 +1,15 @@
 import Algorithms
 import Foundation
 
+// MARK: - Cross-platform path utilities
+
+extension URL {
+  /// The representation used by the native filesystem.
+  var platformString: String {
+    self.withUnsafeFileSystemRepresentation { String(cString: $0!) }
+  }
+}
+
 // MARK: - Errors
 
 /// Errors that can occur during template execution.
@@ -116,8 +125,7 @@ struct CodeGenerator {
     try swiftCode.write(to: sourceFile, atomically: true, encoding: .utf8)
 
     // Execute directly with swift command
-    let process = processForCommand(
-      "swift", arguments: [sourceFile.path(percentEncoded: false)])
+    let process = processForCommand("swift", arguments: [sourceFile.platformString])
 
     let outputPipe = Pipe()
     let errorPipe = Pipe()
