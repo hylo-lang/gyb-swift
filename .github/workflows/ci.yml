@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ "**" ]
+    branches: [ main ]
   pull_request:
     branches: [ "**" ]
 
@@ -24,22 +24,6 @@ jobs:
       with:
         swift-version: 6.2
 
-    - name: Print Swift version and location (Unix)
-      if: runner.os != 'Windows'
-      run: |
-        swift --version
-        which swift
-        which swiftc
-        echo "PATH=$PATH"
-    
-    - name: Print Swift version and location (Windows)
-      if: runner.os == 'Windows'
-      run: |
-        swift --version
-        where swift
-        where swiftc
-        echo "PATH=$env:PATH"
-    
     - name: Restore Cache for SPM
       uses: actions/cache@v4
       with:
