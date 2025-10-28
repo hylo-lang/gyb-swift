@@ -146,7 +146,11 @@ func runProcess(_ command: String, arguments: [String]) throws -> ProcessOutput 
   do {
     try process.run()
   } catch {
-    throw Failure("Failed to run '\(command) \(arguments.joined(separator: " "))'", error)
+    let commandLine =
+      arguments.isEmpty
+      ? command
+      : "\(command) \(arguments.joined(separator: " "))"
+    throw Failure("Failed to run '\(commandLine)'", error)
   }
 
   // Read pipes on background threads to prevent deadlock if output exceeds pipe buffer size.
