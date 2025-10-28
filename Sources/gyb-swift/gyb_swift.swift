@@ -96,6 +96,14 @@ struct GYBSwift: ParsableCommand {
       """)
   var templateGeneratesSwift: Bool = false
 
+  @Flag(
+    help: """
+      Force compilation of template instead of using Swift interpreter.
+      By default, templates are executed via Swift interpreter on non-Windows platforms for speed.
+      This flag forces compilation, useful for testing the compilation path.
+      """)
+  var forceTemplateCompilation: Bool = false
+
   @Flag(help: "Dump the parsed template AST to stdout")
   var dump: Bool = false
 
@@ -169,7 +177,8 @@ struct GYBSwift: ParsableCommand {
     }
 
     // Execute template
-    var result = try generator.execute(ast, bindings: bindings)
+    var result = try generator.execute(
+      ast, bindings: bindings, forceCompilation: forceTemplateCompilation)
 
     // Fix #sourceLocation directives in template output if needed
     if templateGeneratesSwift {
