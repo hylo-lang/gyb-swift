@@ -269,7 +269,8 @@ func cli_compilationError() throws {
     % let x: NonexistentType = 42
     ${x}
     """
-  try badTemplate.write(to: testFile, atomically: true, encoding: .utf8)
+  // On Windows, atomically: true can cause file locking issues
+  try badTemplate.write(to: testFile, atomically: !isWindows, encoding: .utf8)
 
   // Run command programmatically
   var command = try GYBSwift.parseAsRoot([testFile.path])
@@ -303,7 +304,8 @@ func cli_executionError() throws {
   let crashTemplate = """
     % fatalError("deliberate crash")
     """
-  try crashTemplate.write(to: testFile, atomically: true, encoding: .utf8)
+  // On Windows, atomically: true can cause file locking issues
+  try crashTemplate.write(to: testFile, atomically: !isWindows, encoding: .utf8)
 
   // Run command programmatically
   var command = try GYBSwift.parseAsRoot([testFile.path])
