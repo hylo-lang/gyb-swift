@@ -164,13 +164,16 @@ struct CodeGenerator {
     let executableFile = tempDir.appendingPathComponent("gyb_\(uuid)")
     let moduleCacheDir = tempDir.appendingPathComponent("gyb_\(uuid)_modules")
 
+    // On Windows, the compiled executable will have .exe extension
+    let actualExecutableFile =
+      isWindows
+      ? tempDir.appendingPathComponent("gyb_\(uuid).exe")
+      : executableFile
+
     defer {
       try? FileManager.default.removeItem(at: sourceFile)
-      try? FileManager.default.removeItem(at: executableFile)
+      try? FileManager.default.removeItem(at: actualExecutableFile)
       try? FileManager.default.removeItem(at: moduleCacheDir)
-      // On Windows, also try to remove .exe
-      try? FileManager.default.removeItem(
-        at: tempDir.appendingPathComponent("gyb_\(uuid).exe"))
     }
 
     try swiftCode.write(to: sourceFile, atomically: true, encoding: .utf8)
@@ -197,7 +200,7 @@ struct CodeGenerator {
     }
 
     let runProcess = try processForCommand(
-      executableFile.platformString, arguments: [])
+      actualExecutableFile.platformString, arguments: [])
 
     let outputPipe = Pipe()
     let errorPipe = Pipe()
