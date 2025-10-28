@@ -94,6 +94,7 @@ func processForCommand(_ command: String, arguments: [String]) -> Process {
       p.executableURL = URL(fileURLWithPath: command)
     }
     p.arguments = arguments
+    p.environment = ProcessInfo.processInfo.environment
   } else {
     // On Unix-like systems, use /usr/bin/env which searches PATH safely
     p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
