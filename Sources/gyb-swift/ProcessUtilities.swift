@@ -12,6 +12,18 @@ import Foundation
   private let isMacOS = false
 #endif
 
+/// The environment variables of the running process.
+///
+/// On platforms where environment variable names are case-insensitive (Windows), the keys have
+/// all been normalized to upper case, so looking up a variable value from this dictionary by a
+/// name that isn't all-uppercase is a non-portable operation.
+private let environmentVariables = isWindows
+  ? Dictionary(
+    uniqueKeysWithValues: ProcessInfo.processInfo.environment.lazy.map {
+      (key: $0.key.uppercased(), value: $0.value)
+    })
+  : ProcessInfo.processInfo.environment
+
 /// Runs `executable` with `arguments`, returning stdout trimmed of whitespace.
 ///
 /// Returns `nil` if the process fails or produces no output.
@@ -59,9 +71,9 @@ struct Failure: Error {
 
 /// Searches for an executable in PATH on Windows using `where.exe`.
 ///
-/// Returns the full path to the executable, or `nil` if not found.
+/// Returns the full path to the executable.
 private func findWindowsExecutableInPath(_ command: String) throws -> String {
-  guard let winDir = ProcessInfo.processInfo.environment["WINDIR"] else {
+  guard let winDir = environmentVariables["WINDIR"] else {
     throw Failure("No WINDIR in environment")
   }
 
@@ -104,7 +116,6 @@ func processForCommand(_ command: String, arguments: [String]) throws -> Process
     let executablePath = try findWindowsExecutableInPath(command)
     p.executableURL = URL(fileURLWithPath: executablePath)
     p.arguments = arguments
-    p.environment = ProcessInfo.processInfo.environment
   } else {
     // On Unix-like systems, use /usr/bin/env which searches PATH safely
     p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
