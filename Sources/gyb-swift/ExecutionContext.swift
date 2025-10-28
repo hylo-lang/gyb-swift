@@ -125,7 +125,7 @@ struct CodeGenerator {
     try swiftCode.write(to: temp, atomically: true, encoding: .utf8)
 
     // Execute directly with swift command
-    let p = processForCommand("swift", arguments: [temp.platformString])
+    let p = try processForCommand("swift", arguments: [temp.platformString])
 
     let outputPipe = Pipe()
     let errorPipe = Pipe()

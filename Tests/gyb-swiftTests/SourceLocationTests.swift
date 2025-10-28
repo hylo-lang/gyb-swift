@@ -126,7 +126,7 @@ private func runSwiftScript(
     try swiftCode.write(toFile: tempFile, atomically: true, encoding: .utf8)
     defer { try? FileManager.default.removeItem(atPath: tempFile) }
 
-    let process = processForCommand("swift", arguments: [tempFile])
+    let process = try processForCommand("swift", arguments: [tempFile])
 
     // Capture stdout and stderr for diagnostics
     let stdoutPipe = Pipe()
@@ -234,8 +234,8 @@ func hasSyntaxErrors(_ code: String) -> Bool {
 // MARK: - Unit Tests
 
 @Test("Swift executable is accessible")
-func swiftExecutableAccessible() {
-  let process = processForCommand("swift", arguments: ["--version"])
+func swiftExecutableAccessible() throws {
+  let process = try processForCommand("swift", arguments: ["--version"])
 
   let stdoutPipe = Pipe()
   let stderrPipe = Pipe()

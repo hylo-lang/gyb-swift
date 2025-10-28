@@ -17,7 +17,7 @@ import Foundation
 /// Returns `nil` if the process fails or produces no output.
 private func runProcessForOutput(
   _ executable: String, arguments: [String]
-) -> String? {
+) throws -> String {
   let p = Process()
   p.executableURL = URL(fileURLWithPath: executable)
   p.arguments = arguments
@@ -26,54 +26,59 @@ private func runProcessForOutput(
   p.standardOutput = output
   p.standardError = Pipe()
 
-  do {
-    try p.run()
-    p.waitUntilExit()
+  try p.run()
+  p.waitUntilExit()
 
-    guard p.terminationStatus == 0 else { return nil }
-
-    let data = output.fileHandleForReading.readDataToEndOfFile()
-    return String(data: data, encoding: .utf8)?.trimmingCharacters(
-      in: .whitespacesAndNewlines)
-  } catch {
-    return nil
+  guard p.terminationStatus == 0 else {
+    throw Failure("\(executable) \(arguments) exited with \(p.terminationStatus)")
   }
+
+  guard let output = String(
+          data: output.fileHandleForReading.readDataToEndOfFile(),
+          encoding: .utf8) else {
+    throw Failure("output of \(executable) \(arguments) not UTF-8 encoded")
+  }
+
+  return output.trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+struct Failure: Error {
+  let reason: String
+
+  init(_ reason: String) { self.reason = reason }
 }
 
 /// Searches for an executable in PATH on Windows using `where.exe`.
 ///
 /// Returns the full path to the executable, or `nil` if not found.
-private func findExecutableInPath(_ command: String) -> String? {
+private func findWindowsExecutableInPath(_ command: String) throws -> String {
   guard let winDir = ProcessInfo.processInfo.environment["WINDIR"] else {
-    return nil
+    throw Failure("No WINDIR in environment")
   }
 
   let whereCommand = (winDir as NSString).appendingPathComponent("System32")
   let whereExe = (whereCommand as NSString).appendingPathComponent("where.exe")
 
   guard FileManager.default.fileExists(atPath: whereExe) else {
-    return nil
+    throw Failure("\(whereExe) doesn't exist")
   }
 
-  guard let output = runProcessForOutput(whereExe, arguments: [command]) else {
-    return nil
-  }
+  let output = try runProcessForOutput(whereExe, arguments: [command])
 
   // where.exe returns the first match on the first line
-  return output.split(separator: "\n", maxSplits: 1).first.map { String($0) }
+  guard let r = output.split(separator: "\n", maxSplits: 1).first else {
+    throw Failure("output of \(whereExe) is empty.")
+  }
+  return String(r)
 }
 
-/// The SDK root path for macOS, or `nil` if not on macOS or unable to determine.
-private func sdkRootPath() -> String? {
-  guard isMacOS else { return nil }
-
-  guard
-    let path = runProcessForOutput("/usr/bin/xcrun", arguments: ["--show-sdk-path"]),
-    !path.isEmpty
-  else {
-    return nil
-  }
-
+/// The SDK root path on macOS.
+///
+/// - Precondition: running on macOS
+private func sdkRootPath() throws -> String {
+  precondition(isMacOS)
+  let path = try runProcessForOutput("/usr/bin/xcrun", arguments: ["--show-sdk-path"])
+  if path.isEmpty { throw Failure("'xcrun --show-sdk-path' returned empty string") }
   return path
 }
 
@@ -82,17 +87,13 @@ private func sdkRootPath() -> String? {
 /// On Unix-like systems, uses `/usr/bin/env` to resolve the command from PATH.
 /// On Windows, searches PATH explicitly to find the full executable path.
 /// On macOS, sets SDKROOT environment variable if not already set.
-func processForCommand(_ command: String, arguments: [String]) -> Process {
+func processForCommand(_ command: String, arguments: [String]) throws -> Process {
   let p = Process()
 
   if isWindows {
     // On Windows, search PATH explicitly to avoid looking in current directory
-    if let executablePath = findExecutableInPath(command) {
-      p.executableURL = URL(fileURLWithPath: executablePath)
-    } else {
-      // Fall back to command as-is if not found in PATH
-      p.executableURL = URL(fileURLWithPath: command)
-    }
+    let executablePath = try findWindowsExecutableInPath(command)
+    p.executableURL = URL(fileURLWithPath: executablePath)
     p.arguments = arguments
     p.environment = ProcessInfo.processInfo.environment
   } else {
@@ -104,8 +105,8 @@ func processForCommand(_ command: String, arguments: [String]) -> Process {
   // On macOS, ensure SDKROOT is set for Swift compilation
   if isMacOS {
     var environment = ProcessInfo.processInfo.environment
-    if environment["SDKROOT"] == nil, let sdkRoot = sdkRootPath() {
-      environment["SDKROOT"] = sdkRoot
+    if environment["SDKROOT"] == nil {
+      environment["SDKROOT"] = try sdkRootPath()
       p.environment = environment
     }
   }
