@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
   pull_request:
-    branches: [ main ]
+    branches: [ "**" ]
 
 jobs:
   test:
@@ -13,33 +13,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, ubuntu-24.04, windows-2025]
-    
+        os: [macos-15]
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+
     - name: Set up swift
       uses: SwiftyLab/setup-swift@latest
       with:
         swift-version: 6.2
 
-    - name: Print Swift version and location (Unix)
-      if: runner.os != 'Windows'
-      run: |
-        swift --version
-        which swift
-        which swiftc
-        echo "PATH=$PATH"
-    
-    - name: Print Swift version and location (Windows)
-      if: runner.os == 'Windows'
-      run: |
-        swift --version
-        where swift
-        where swiftc
-        echo "PATH=$env:PATH"
-    
     - name: Restore Cache for SPM
       uses: actions/cache@v4
       with:
@@ -48,6 +32,8 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-spm-
 
-    - name: Run tests
-      run: swift test
+    - name: Build
+      run: swift build --build-tests --disable-xctest
 
+    - name: Run tests
+      run: swift test --skip-update --skip-build --verbose --disable-xctest

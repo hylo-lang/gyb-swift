@@ -1,15 +1,15 @@
 import Foundation
 
 #if os(Windows)
-  private let isWindows = true
+  internal let isWindows = true
 #else
-  private let isWindows = false
+  internal let isWindows = false
 #endif
 
 #if os(macOS)
-  private let isMacOS = true
+  internal let isMacOS = true
 #else
-  private let isMacOS = false
+  internal let isMacOS = false
 #endif
 
 /// The environment variables of the running process.
@@ -17,7 +17,8 @@ import Foundation
 /// On platforms where environment variable names are case-insensitive (Windows), the keys have
 /// all been normalized to upper case, so looking up a variable value from this dictionary by a
 /// name that isn't all-uppercase is a non-portable operation.
-private let environmentVariables = isWindows
+private let environmentVariables =
+  isWindows
   ? Dictionary(
     uniqueKeysWithValues: ProcessInfo.processInfo.environment.lazy.map {
       (key: $0.key.uppercased(), value: $0.value)
@@ -25,35 +26,16 @@ private let environmentVariables = isWindows
   : ProcessInfo.processInfo.environment
 
 /// Runs `executable` with `arguments`, returning stdout trimmed of whitespace.
-///
-/// Returns `nil` if the process fails or produces no output.
 private func runProcessForOutput(
   _ executable: String, arguments: [String]
 ) throws -> String {
-  let p = Process()
-  p.executableURL = URL(fileURLWithPath: executable)
-  p.arguments = arguments
+  let result = try runProcess(executable, arguments: arguments)
 
-  let output = Pipe()
-  p.standardOutput = output
-  p.standardError = Pipe()
-
-  do {
-    try p.run()
-  }
-  catch let e {
-    throw Failure("running \(executable) \(arguments) threw.", e)
+  guard result.exitStatus == 0 else {
+    throw Failure("\(executable) \(arguments) exited with \(result.exitStatus)")
   }
 
-  p.waitUntilExit()
-
-  guard p.terminationStatus == 0 else {
-    throw Failure("\(executable) \(arguments) exited with \(p.terminationStatus)")
-  }
-
-  guard let output = String(
-          data: output.fileHandleForReading.readDataToEndOfFile(),
-          encoding: .utf8) else {
+  guard let output = String(data: result.stdout, encoding: .utf8) else {
     throw Failure("output of \(executable) \(arguments) not UTF-8 encoded")
   }
 
@@ -103,26 +85,28 @@ private func sdkRootPath() throws -> String {
   return path
 }
 
-/// Creates a `Process` configured to execute the given command via PATH resolution.
+/// Returns a `Process` that runs `command` with the given `arguments`.
 ///
-/// On Unix-like systems, uses `/usr/bin/env` to resolve the command from PATH.
-/// On Windows, searches PATH explicitly to find the full executable path.
-/// On macOS, sets SDKROOT environment variable if not already set.
+/// If `command` contains no path separators, it will be found in
+/// `PATH`.  On macOS, ensures SDKROOT is set in the environment in
+/// case the command needs it.
 func processForCommand(_ command: String, arguments: [String]) throws -> Process {
   let p = Process()
 
-  if isWindows {
-    // On Windows, search PATH explicitly to avoid looking in current directory
-    let executablePath = try findWindowsExecutableInPath(command)
-    p.executableURL = URL(fileURLWithPath: executablePath)
-    p.arguments = arguments
+  p.arguments = arguments
+  // If command contains path separators, use it directly without PATH search
+  if command.contains(isWindows ? "\\" : "/") {
+    p.executableURL = URL(fileURLWithPath: command)
   } else {
-    // On Unix-like systems, use /usr/bin/env which searches PATH safely
-    p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-    p.arguments = [command] + arguments
+    if isWindows {
+      p.executableURL = URL(fileURLWithPath: try findWindowsExecutableInPath(command))
+    } else {
+      // Let env find and run the executable.
+      p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+      p.arguments = [command] + arguments
+    }
   }
 
-  // On macOS, ensure SDKROOT is set for Swift compilation
   if isMacOS {
     var environment = ProcessInfo.processInfo.environment
     if environment["SDKROOT"] == nil {
@@ -132,4 +116,33 @@ func processForCommand(_ command: String, arguments: [String]) throws -> Process
   }
 
   return p
+}
+
+/// Output from running a process.
+struct ProcessOutput {
+  /// Standard output data.
+  let stdout: Data
+  /// Standard error data.
+  let stderr: Data
+  /// Process exit status.
+  let exitStatus: Int32
+}
+
+/// Runs `command` with `arguments`, returning captured output and exit status.
+func runProcess(_ command: String, arguments: [String]) throws -> ProcessOutput {
+  let process = try processForCommand(command, arguments: arguments)
+
+  let stdoutPipe = Pipe()
+  let stderrPipe = Pipe()
+  process.standardOutput = stdoutPipe
+  process.standardError = stderrPipe
+
+  try process.run()
+  process.waitUntilExit()
+
+  return ProcessOutput(
+    stdout: stdoutPipe.fileHandleForReading.readDataToEndOfFile(),
+    stderr: stderrPipe.fileHandleForReading.readDataToEndOfFile(),
+    exitStatus: process.terminationStatus
+  )
 }

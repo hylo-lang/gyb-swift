@@ -110,70 +110,116 @@ struct CodeGenerator {
     return fixSourceLocationPlacement(code)
   }
 
-  /// Executes `ast` with `bindings` by compiling and running generated Swift code.
-  func execute(_ ast: AST, bindings: [String: String] = [:]) throws -> String {
+  /// Executes `ast` with `bindings` using Swift interpreter or compilation.
+  ///
+  /// By default, uses the Swift interpreter on non-Windows platforms for faster execution.
+  /// On Windows or when `forceCompilation` is true, compiles and runs the generated code.
+  func execute(
+    _ ast: AST, bindings: [String: String] = [:], forceCompilation: Bool = false
+  ) throws -> String {
     let swiftCode = generateCompleteProgram(ast, bindings: bindings)
 
-    // Write to temporary file
+    return
+      (isWindows || forceCompilation)
+      ? try executeViaCompilation(swiftCode)
+      : try executeViaInterpreter(swiftCode)
+  }
+
+  /// Executes `swiftCode` using the Swift interpreter (fast).
+  private func executeViaInterpreter(_ swiftCode: String) throws -> String {
     let tempDir = FileManager.default.temporaryDirectory
-    let uuid = UUID().uuidString
-    let sourceFile = tempDir.appendingPathComponent("gyb_\(uuid).swift")
-    let executableFile = tempDir.appendingPathComponent("gyb_\(uuid)")
-    let moduleCacheDir = tempDir.appendingPathComponent("gyb_\(uuid)_modules")
+    let temp = tempDir.appendingPathComponent("gyb_\(UUID().uuidString).swift")
 
     defer {
-      try? FileManager.default.removeItem(at: sourceFile)
-      try? FileManager.default.removeItem(at: executableFile)
-      try? FileManager.default.removeItem(at: moduleCacheDir)
-      // On Windows, also try to remove .exe
-      try? FileManager.default.removeItem(
-        at: tempDir.appendingPathComponent("gyb_\(uuid).exe"))
+      try? FileManager.default.removeItem(at: temp)
     }
 
-    try swiftCode.write(to: sourceFile, atomically: true, encoding: .utf8)
+    try swiftCode.write(to: temp, atomically: true, encoding: .utf8)
 
-    // Compile the Swift code
-    let compileProcess = try processForCommand(
+    let result = try runProcess("swift", arguments: [temp.platformString])
+
+    guard result.exitStatus == 0 else {
+      let errorOutput = String(data: result.stderr, encoding: .utf8) ?? "Unknown error"
+      throw GYBError.executionFailed(filename: filename, errorOutput: errorOutput)
+    }
+
+    return String(data: result.stdout, encoding: .utf8) ?? ""
+  }
+
+  /// Executes `swiftCode` by compiling and running the executable.
+  private func executeViaCompilation(_ swiftCode: String) throws -> String {
+    let tempFiles = createTempFiles()
+    defer { cleanupTempFiles(tempFiles) }
+
+    try swiftCode.write(to: tempFiles.source, atomically: true, encoding: .utf8)
+    try compileSwiftCode(
+      source: tempFiles.source, output: tempFiles.executable, moduleCache: tempFiles.moduleCache)
+    return try runCompiledExecutable(tempFiles.actualExecutable)
+  }
+
+  /// Temporary files needed for compilation.
+  private struct TempFiles {
+    let source: URL
+    let executable: URL
+    let actualExecutable: URL
+    let moduleCache: URL
+  }
+
+  /// Creates temporary files for compilation with platform-specific executable naming.
+  private func createTempFiles() -> TempFiles {
+    let tempDir = FileManager.default.temporaryDirectory
+    let uuid = UUID().uuidString
+    let source = tempDir.appendingPathComponent("gyb_\(uuid).swift")
+    let executable = tempDir.appendingPathComponent("gyb_\(uuid)")
+    let moduleCache = tempDir.appendingPathComponent("gyb_\(uuid)_modules")
+
+    // On Windows, the compiled executable will have .exe extension
+    let actualExecutable =
+      isWindows
+      ? tempDir.appendingPathComponent("gyb_\(uuid).exe")
+      : executable
+
+    return TempFiles(
+      source: source,
+      executable: executable,
+      actualExecutable: actualExecutable,
+      moduleCache: moduleCache
+    )
+  }
+
+  /// Removes all temporary files, ignoring errors.
+  private func cleanupTempFiles(_ files: TempFiles) {
+    try? FileManager.default.removeItem(at: files.source)
+    try? FileManager.default.removeItem(at: files.actualExecutable)
+    try? FileManager.default.removeItem(at: files.moduleCache)
+  }
+
+  /// Compiles Swift source file to executable.
+  private func compileSwiftCode(source: URL, output: URL, moduleCache: URL) throws {
+    let result = try runProcess(
       "swiftc",
       arguments: [
-        sourceFile.platformString,
-        "-o", executableFile.platformString,
-        "-module-cache-path", moduleCacheDir.platformString,
+        source.platformString,
+        "-o", output.platformString,
+        "-module-cache-path", moduleCache.platformString,
       ])
 
-    let compileError = Pipe()
-    compileProcess.standardOutput = Pipe()
-    compileProcess.standardError = compileError
+    guard result.exitStatus == 0 else {
+      let errorOutput = String(data: result.stderr, encoding: .utf8) ?? "Unknown error"
+      throw GYBError.executionFailed(filename: filename, errorOutput: errorOutput)
+    }
+  }
 
-    try compileProcess.run()
-    compileProcess.waitUntilExit()
+  /// Runs compiled executable and returns its output.
+  private func runCompiledExecutable(_ executable: URL) throws -> String {
+    let result = try runProcess(executable.platformString, arguments: [])
 
-    if compileProcess.terminationStatus != 0 {
-      let errorData = compileError.fileHandleForReading.readDataToEndOfFile()
-      let errorOutput = String(data: errorData, encoding: .utf8) ?? "Unknown error"
+    guard result.exitStatus == 0 else {
+      let errorOutput = String(data: result.stderr, encoding: .utf8) ?? "Unknown error"
       throw GYBError.executionFailed(filename: filename, errorOutput: errorOutput)
     }
 
-    // Run the compiled executable
-    let runProcess = try processForCommand(
-      executableFile.platformString, arguments: [])
-
-    let outputPipe = Pipe()
-    let errorPipe = Pipe()
-    runProcess.standardOutput = outputPipe
-    runProcess.standardError = errorPipe
-
-    try runProcess.run()
-    runProcess.waitUntilExit()
-
-    if runProcess.terminationStatus != 0 {
-      let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-      let errorOutput = String(data: errorData, encoding: .utf8) ?? "Unknown error"
-      throw GYBError.executionFailed(filename: filename, errorOutput: errorOutput)
-    }
-
-    let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-    return String(data: outputData, encoding: .utf8) ?? ""
+    return String(data: result.stdout, encoding: .utf8) ?? ""
   }
 
   /// Returns the start position of `nodes`'s first element.
