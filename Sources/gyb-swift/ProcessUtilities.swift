@@ -12,6 +12,34 @@ import Foundation
   private let isMacOS = false
 #endif
 
+/// Runs `executable` with `arguments`, returning stdout trimmed of whitespace.
+///
+/// Returns `nil` if the process fails or produces no output.
+private func runProcessForOutput(
+  _ executable: String, arguments: [String]
+) -> String? {
+  let process = Process()
+  process.executableURL = URL(fileURLWithPath: executable)
+  process.arguments = arguments
+
+  let pipe = Pipe()
+  process.standardOutput = pipe
+  process.standardError = Pipe()
+
+  do {
+    try process.run()
+    process.waitUntilExit()
+
+    guard process.terminationStatus == 0 else { return nil }
+
+    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+    return String(data: data, encoding: .utf8)?.trimmingCharacters(
+      in: .whitespacesAndNewlines)
+  } catch {
+    return nil
+  }
+}
+
 /// Searches for an executable in PATH on Windows using `where.exe`.
 ///
 /// Returns the full path to the executable, or `nil` if not found.
@@ -27,64 +55,26 @@ private func findExecutableInPath(_ command: String) -> String? {
     return nil
   }
 
-  let process = Process()
-  process.executableURL = URL(fileURLWithPath: whereExe)
-  process.arguments = [command]
-
-  let pipe = Pipe()
-  process.standardOutput = pipe
-  process.standardError = Pipe()
-
-  do {
-    try process.run()
-    process.waitUntilExit()
-
-    guard process.terminationStatus == 0 else { return nil }
-
-    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-    if let output = String(data: data, encoding: .utf8) {
-      // where.exe returns the first match on the first line
-      return output.split(separator: "\n", maxSplits: 1).first.map {
-        String($0).trimmingCharacters(in: .whitespacesAndNewlines)
-      }
-    }
-  } catch {
+  guard let output = runProcessForOutput(whereExe, arguments: [command]) else {
     return nil
   }
 
-  return nil
+  // where.exe returns the first match on the first line
+  return output.split(separator: "\n", maxSplits: 1).first.map { String($0) }
 }
 
 /// The SDK root path for macOS, or `nil` if not on macOS or unable to determine.
 private func sdkRootPath() -> String? {
   guard isMacOS else { return nil }
 
-  let xcrunProcess = Process()
-  xcrunProcess.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
-  xcrunProcess.arguments = ["--show-sdk-path"]
-
-  let pipe = Pipe()
-  xcrunProcess.standardOutput = pipe
-  xcrunProcess.standardError = Pipe()
-
-  do {
-    try xcrunProcess.run()
-    xcrunProcess.waitUntilExit()
-
-    guard xcrunProcess.terminationStatus == 0 else { return nil }
-
-    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-    if let path = String(data: data, encoding: .utf8)?.trimmingCharacters(
-      in: .whitespacesAndNewlines),
-      !path.isEmpty
-    {
-      return path
-    }
-  } catch {
+  guard
+    let path = runProcessForOutput("/usr/bin/xcrun", arguments: ["--show-sdk-path"]),
+    !path.isEmpty
+  else {
     return nil
   }
 
-  return nil
+  return path
 }
 
 /// Creates a `Process` configured to execute the given command via PATH resolution.
