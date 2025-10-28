@@ -17,7 +17,8 @@ import Foundation
 /// On platforms where environment variable names are case-insensitive (Windows), the keys have
 /// all been normalized to upper case, so looking up a variable value from this dictionary by a
 /// name that isn't all-uppercase is a non-portable operation.
-private let environmentVariables = isWindows
+private let environmentVariables =
+  isWindows
   ? Dictionary(
     uniqueKeysWithValues: ProcessInfo.processInfo.environment.lazy.map {
       (key: $0.key.uppercased(), value: $0.value)
@@ -40,8 +41,7 @@ private func runProcessForOutput(
 
   do {
     try p.run()
-  }
-  catch let e {
+  } catch let e {
     throw Failure("running \(executable) \(arguments) threw.", e)
   }
 
@@ -51,9 +51,11 @@ private func runProcessForOutput(
     throw Failure("\(executable) \(arguments) exited with \(p.terminationStatus)")
   }
 
-  guard let output = String(
-          data: output.fileHandleForReading.readDataToEndOfFile(),
-          encoding: .utf8) else {
+  guard
+    let output = String(
+      data: output.fileHandleForReading.readDataToEndOfFile(),
+      encoding: .utf8)
+  else {
     throw Failure("output of \(executable) \(arguments) not UTF-8 encoded")
   }
 
