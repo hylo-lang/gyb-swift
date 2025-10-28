@@ -142,7 +142,11 @@ struct GYBSwift: ParsableCommand {
     } else {
       // Read from file
       let source = URL(fileURLWithPath: file)
-      templateText = try String(contentsOf: source, encoding: .utf8)
+      do {
+        templateText = try String(contentsOf: source, encoding: .utf8)
+      } catch {
+        throw Failure("Failed to read template file '\(file)'", error)
+      }
       filename = file
     }
 
@@ -190,7 +194,11 @@ struct GYBSwift: ParsableCommand {
       print(result, terminator: "")
     } else {
       let destination = URL(fileURLWithPath: output)
-      try result.write(to: destination, atomically: true, encoding: .utf8)
+      do {
+        try result.write(to: destination, atomically: true, encoding: .utf8)
+      } catch {
+        throw Failure("Failed to write output to '\(output)'", error)
+      }
     }
   }
 }

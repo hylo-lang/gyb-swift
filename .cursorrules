@@ -36,6 +36,8 @@ Avoid conditional compilation as it makes code that runs on other platforms impo
 
 Never swallow errors. When a function can fail, use `throws` to propagate descriptive errors rather than returning optionals or silently failing. This ensures failures are visible and debuggable.
 
+When system APIs or external processes throw errors, wrap them in `Failure` with contextual information about what operation was being performed. This makes errors easier to diagnose, especially on different platforms. For example, wrap file I/O errors with the path being accessed, and process execution errors with the command being run.
+
 When invoking `swiftc`, pass `-module-cache-path` with a temporary directory to avoid conflicts when running in parallel (e.g., during `swift test`).
 
 ## Naming Guidelines

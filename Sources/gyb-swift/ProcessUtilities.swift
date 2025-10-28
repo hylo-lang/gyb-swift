@@ -38,12 +38,20 @@ private func runProcessForOutput(
   return result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
-struct Failure: Error {
+struct Failure: Error, CustomStringConvertible {
   let reason: String
   let error: (any Error)?
+
   init(_ reason: String, _ error: (any Error)? = nil) {
     self.reason = reason
     self.error = error
+  }
+
+  var description: String {
+    if let error = error {
+      return "\(reason): \(error)"
+    }
+    return reason
   }
 }
 
@@ -135,7 +143,11 @@ func runProcess(_ command: String, arguments: [String]) throws -> ProcessOutput 
   process.standardOutput = stdoutPipe
   process.standardError = stderrPipe
 
-  try process.run()
+  do {
+    try process.run()
+  } catch {
+    throw Failure("Failed to run '\(command) \(arguments.joined(separator: " "))'", error)
+  }
 
   // Read pipes on background threads to prevent deadlock if output exceeds pipe buffer size.
   // The child process will block if pipe buffers fill up, so we must drain them continuously.

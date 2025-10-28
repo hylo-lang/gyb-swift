@@ -134,7 +134,11 @@ struct CodeGenerator {
       try? FileManager.default.removeItem(at: temp)
     }
 
-    try swiftCode.write(to: temp, atomically: true, encoding: .utf8)
+    do {
+      try swiftCode.write(to: temp, atomically: true, encoding: .utf8)
+    } catch {
+      throw Failure("Failed to write temporary Swift file to '\(temp.path)'", error)
+    }
 
     let result = try runProcess("swift", arguments: [temp.platformString])
 
@@ -150,7 +154,11 @@ struct CodeGenerator {
     let tempFiles = createTempFiles()
     defer { cleanupTempFiles(tempFiles) }
 
-    try swiftCode.write(to: tempFiles.source, atomically: true, encoding: .utf8)
+    do {
+      try swiftCode.write(to: tempFiles.source, atomically: true, encoding: .utf8)
+    } catch {
+      throw Failure("Failed to write temporary Swift file to '\(tempFiles.source.path)'", error)
+    }
     try compileSwiftCode(
       source: tempFiles.source, output: tempFiles.executable, moduleCache: tempFiles.moduleCache)
     return try runCompiledExecutable(tempFiles.actualExecutable)
