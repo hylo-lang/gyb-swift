@@ -20,7 +20,6 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "SwiftSyntax", package: "swift-syntax"),
                 .product(name: "SwiftParser", package: "swift-syntax"),
-                .product(name: "SwiftDiagnostics", package: "swift-syntax"),
                 .product(name: "Algorithms", package: "swift-algorithms"),
             ]
         ),
