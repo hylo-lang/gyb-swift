@@ -26,7 +26,13 @@ private func runProcessForOutput(
   p.standardOutput = output
   p.standardError = Pipe()
 
-  try p.run()
+  do {
+    try p.run()
+  }
+  catch let e {
+    throw Failure("running \(executable) \(arguments) threw.", e)
+  }
+
   p.waitUntilExit()
 
   guard p.terminationStatus == 0 else {
@@ -44,8 +50,11 @@ private func runProcessForOutput(
 
 struct Failure: Error {
   let reason: String
-
-  init(_ reason: String) { self.reason = reason }
+  let error: (any Error)?
+  init(_ reason: String, _ error: (any Error)? = nil) {
+    self.reason = reason
+    self.error = error
+  }
 }
 
 /// Searches for an executable in PATH on Windows using `where.exe`.
