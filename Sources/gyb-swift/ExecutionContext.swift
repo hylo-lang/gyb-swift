@@ -161,14 +161,13 @@ struct CodeGenerator {
     }
     try compileSwiftCode(
       source: tempFiles.source, output: tempFiles.executable, moduleCache: tempFiles.moduleCache)
-    return try runCompiledExecutable(tempFiles.actualExecutable)
+    return try runCompiledExecutable(tempFiles.executable)
   }
 
   /// Temporary files needed for compilation.
   private struct TempFiles {
     let source: URL
     let executable: URL
-    let actualExecutable: URL
     let moduleCache: URL
   }
 
@@ -177,19 +176,17 @@ struct CodeGenerator {
     let tempDir = FileManager.default.temporaryDirectory
     let uuid = UUID().uuidString
     let source = tempDir.appendingPathComponent("gyb_\(uuid).swift")
-    let executable = tempDir.appendingPathComponent("gyb_\(uuid)")
     let moduleCache = tempDir.appendingPathComponent("gyb_\(uuid)_modules")
 
-    // On Windows, the compiled executable will have .exe extension
-    let actualExecutable =
+    // On Windows, executables must have .exe extension
+    let executable =
       isWindows
       ? tempDir.appendingPathComponent("gyb_\(uuid).exe")
-      : executable
+      : tempDir.appendingPathComponent("gyb_\(uuid)")
 
     return TempFiles(
       source: source,
       executable: executable,
-      actualExecutable: actualExecutable,
       moduleCache: moduleCache
     )
   }
@@ -197,7 +194,7 @@ struct CodeGenerator {
   /// Removes all temporary files, ignoring errors.
   private func cleanupTempFiles(_ files: TempFiles) {
     try? FileManager.default.removeItem(at: files.source)
-    try? FileManager.default.removeItem(at: files.actualExecutable)
+    try? FileManager.default.removeItem(at: files.executable)
     try? FileManager.default.removeItem(at: files.moduleCache)
   }
 
