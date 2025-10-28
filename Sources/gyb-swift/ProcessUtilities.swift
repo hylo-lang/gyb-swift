@@ -26,36 +26,16 @@ private let environmentVariables =
   : ProcessInfo.processInfo.environment
 
 /// Runs `executable` with `arguments`, returning stdout trimmed of whitespace.
-///
-/// Returns `nil` if the process fails or produces no output.
 private func runProcessForOutput(
   _ executable: String, arguments: [String]
 ) throws -> String {
-  let p = Process()
-  p.executableURL = URL(fileURLWithPath: executable)
-  p.arguments = arguments
+  let result = try runProcess(executable, arguments: arguments)
 
-  let output = Pipe()
-  p.standardOutput = output
-  p.standardError = Pipe()
-
-  do {
-    try p.run()
-  } catch let e {
-    throw Failure("running \(executable) \(arguments) threw.", e)
+  guard result.exitStatus == 0 else {
+    throw Failure("\(executable) \(arguments) exited with \(result.exitStatus)")
   }
 
-  p.waitUntilExit()
-
-  guard p.terminationStatus == 0 else {
-    throw Failure("\(executable) \(arguments) exited with \(p.terminationStatus)")
-  }
-
-  guard
-    let output = String(
-      data: output.fileHandleForReading.readDataToEndOfFile(),
-      encoding: .utf8)
-  else {
+  guard let output = String(data: result.stdout, encoding: .utf8) else {
     throw Failure("output of \(executable) \(arguments) not UTF-8 encoded")
   }
 
@@ -136,4 +116,33 @@ func processForCommand(_ command: String, arguments: [String]) throws -> Process
   }
 
   return p
+}
+
+/// Output from running a process.
+struct ProcessOutput {
+  /// Standard output data.
+  let stdout: Data
+  /// Standard error data.
+  let stderr: Data
+  /// Process exit status.
+  let exitStatus: Int32
+}
+
+/// Runs `command` with `arguments`, returning captured output and exit status.
+func runProcess(_ command: String, arguments: [String]) throws -> ProcessOutput {
+  let process = try processForCommand(command, arguments: arguments)
+
+  let stdoutPipe = Pipe()
+  let stderrPipe = Pipe()
+  process.standardOutput = stdoutPipe
+  process.standardError = stderrPipe
+
+  try process.run()
+  process.waitUntilExit()
+
+  return ProcessOutput(
+    stdout: stdoutPipe.fileHandleForReading.readDataToEndOfFile(),
+    stderr: stderrPipe.fileHandleForReading.readDataToEndOfFile(),
+    exitStatus: process.terminationStatus
+  )
 }
