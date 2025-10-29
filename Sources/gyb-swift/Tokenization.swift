@@ -191,48 +191,29 @@ struct TemplateTokens: Sequence, IteratorProtocol {
 // MARK: - Swift Tokenization
 
 /// Returns the index of the first unmatched `}` in Swift code,
-/// or `code.endIndex` if none exists, using SwiftSyntax to ignore braces in strings and comments.
+/// or `code.endIndex` if none exists.
 func tokenizeSwiftToUnmatchedCloseCurly(_ code: Substring) -> String.Index {
-  // Parse the Swift code (SwiftSyntax requires a String)
+  // Parse to get tokens, which automatically handles braces within strings and comments.
   let parsed = Parser.parse(source: String(code))
 
-  // Walk the syntax tree looking for braces
-  class BraceVisitor: SyntaxVisitor {
-    var nesting = 0
-    var closeBraceOffset: Int?
-
-    override func visit(_ token: TokenSyntax) -> SyntaxVisitorContinueKind {
-      // If we already found the close brace, stop walking
-      if closeBraceOffset != nil {
-        return .skipChildren
+  var nesting = 0
+  for token in parsed.tokens(viewMode: .sourceAccurate) {
+    if token.tokenKind == .leftBrace {
+      nesting += 1
+    } else if token.tokenKind == .rightBrace {
+      nesting -= 1
+      if nesting < 0 {
+        return convertUTF8OffsetToIndex(
+          token.positionAfterSkippingLeadingTrivia.utf8Offset, in: code)
       }
-
-      if token.tokenKind == .leftBrace {
-        nesting += 1
-      } else if token.tokenKind == .rightBrace {
-        nesting -= 1
-        if nesting < 0 {
-          // Found unmatched closing brace
-          // Use positionAfterSkippingLeadingTrivia which gives the actual token position
-          closeBraceOffset = token.positionAfterSkippingLeadingTrivia.utf8Offset
-          return .skipChildren
-        }
-      }
-      return .visitChildren
-    }
-  }
-
-  let visitor = BraceVisitor(viewMode: .all)
-  visitor.walk(parsed)
-
-  if let utf8Offset = visitor.closeBraceOffset {
-    // Convert UTF-8 offset to String.Index efficiently using the Substring's utf8 view
-    // The Substring shares indices with its parent, so this index is already valid there!
-    let utf8Index = code.utf8.index(code.utf8.startIndex, offsetBy: utf8Offset)
-    if let stringIndex = String.Index(utf8Index, within: code) {
-      return stringIndex
     }
   }
 
   return code.endIndex
+}
+
+/// Converts a UTF-8 byte offset to a `String.Index` within the given substring.
+private func convertUTF8OffsetToIndex(_ utf8Offset: Int, in code: Substring) -> String.Index {
+  let utf8Index = code.utf8.index(code.utf8.startIndex, offsetBy: utf8Offset)
+  return String.Index(utf8Index, within: code) ?? code.endIndex
 }

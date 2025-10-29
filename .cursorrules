@@ -51,6 +51,7 @@ Avoid putting type information in non-type names. Variable names should reflect 
 - Avoid verbose parameter blocks when good naming and a clear summary suffice
 - Name parameters in summary (e.g., "`nodes`'s text") to show their roles precisely
 - Raise the level of abstraction - focus on semantic meaning rather than implementation details
+- Doc comments describe the contract (what, not how). Implementation details and rationale belong in regular comments inside the function body.
 - When multiple sentences are needed, separate them with a blank line
 - Prefer single sentences with clauses (e.g., ", or `nil` if...") over multiple short sentences
 - Document init functions as though they are descriptions of the
