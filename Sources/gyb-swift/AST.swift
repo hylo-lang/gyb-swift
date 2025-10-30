@@ -53,10 +53,14 @@ typealias AST = [ASTNode]
 // MARK: - Helper Extensions
 
 extension StringProtocol {
-  /// The code content from a gyb block (%{...}%).
+  /// The code content from a gyb block, with delimiters and optional trailing newline removed.
   ///
-  /// Removes the %{ prefix, }% suffix, and optional trailing newline.
+  /// - Precondition: `self` starts with `%{` and ends with `}%` or `}%\n`.
   var codeBlockContent: SubSequence {
+    precondition(hasPrefix("%{"), "Expected %{ prefix")
+    precondition(
+      hasSuffix("}%") || hasSuffix("}%\n"),
+      "Expected }% suffix with optional newline")
     let suffixLength = last?.isNewline == true ? 3 : 2  // }%\n or }%
     return dropFirst(2).dropLast(suffixLength)
   }
