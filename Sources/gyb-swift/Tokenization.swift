@@ -205,7 +205,7 @@ extension StringProtocol {
       } else if token.tokenKind == .rightBrace {
         nesting -= 1
         if nesting < 0 {
-          return indexFromUTF8Offset(token.positionAfterSkippingLeadingTrivia.utf8Offset)
+          return index(at: token.positionAfterSkippingLeadingTrivia)
         }
       }
     }
@@ -213,9 +213,9 @@ extension StringProtocol {
     return endIndex
   }
 
-  /// Converts a UTF-8 byte offset to a `String.Index`.
-  func indexFromUTF8Offset(_ utf8Offset: Int) -> String.Index {
-    let utf8Index = utf8.index(utf8.startIndex, offsetBy: utf8Offset)
+  /// The index at `position`.
+  func index(at position: AbsolutePosition) -> String.Index {
+    let utf8Index = utf8.index(utf8.startIndex, offsetBy: position.utf8Offset)
     return String.Index(utf8Index, within: self) ?? endIndex
   }
 }
