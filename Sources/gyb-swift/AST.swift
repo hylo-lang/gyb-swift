@@ -50,13 +50,16 @@ struct SubstitutionNode: ASTNode {
 /// Note: Nesting is handled by Swift's compiler, not by the parser.
 typealias AST = [ASTNode]
 
-// MARK: - Helper Functions
+// MARK: - Helper Extensions
 
-/// Extracts code content from a gybBlockOpen token (%{...}%).
-/// Removes the %{ prefix, }% suffix, and optional trailing newline.
-private func extractCodeFromBlockToken(_ token: Substring) -> Substring {
-  let suffixLength = token.last?.isNewline == true ? 3 : 2  // }%\n or }%
-  return token.dropFirst(2).dropLast(suffixLength)
+extension StringProtocol {
+  /// The code content from a gyb block (%{...}%).
+  ///
+  /// Removes the %{ prefix, }% suffix, and optional trailing newline.
+  var codeBlockContent: SubSequence {
+    let suffixLength = last?.isNewline == true ? 3 : 2  // }%\n or }%
+    return dropFirst(2).dropLast(suffixLength)
+  }
 }
 
 // MARK: - Parse Context
@@ -93,7 +96,7 @@ struct ParseContext {
       case .gybBlock:
         // Extract code between %{ and }%
         return CodeNode(
-          code: extractCodeFromBlockToken(token.text),
+          code: token.text.codeBlockContent,
           sourcePosition: token.text.startIndex)
 
       case .symbol:

@@ -178,8 +178,8 @@ func resultsOfRunning(_ commandLine: [String], setSDKRoot: Bool = true) throws -
   p.waitUntilExit()
 
   // Retrieve the data (blocks until background reads complete)
-  let stdout = try decodeUTF8(stdoutData(), as: "\(command) stdout")
-  let stderr = try decodeUTF8(stderrData(), as: "\(command) stderr")
+  let stdout = try stdoutData().asUTF8(source: "\(command) stdout")
+  let stderr = try stderrData().asUTF8(source: "\(command) stderr")
 
   return ProcessResults(
     stdout: stdout,
@@ -218,10 +218,12 @@ private func readPipeInBackground(_ pipe: Pipe) -> () -> Data {
   }
 }
 
-/// Decodes `data` as UTF-8, throwing `Failure` with `source` name if it fails.
-private func decodeUTF8(_ data: Data, as source: String) throws -> String {
-  guard let result = String(data: data, encoding: .utf8) else {
-    throw Failure("\(source) not UTF-8 encoded")
+extension Data {
+  /// `self` decoded as UTF-8.
+  func asUTF8(source: String) throws -> String {
+    guard let result = String(data: self, encoding: .utf8) else {
+      throw Failure("\(source) not UTF-8 encoded")
+    }
+    return result
   }
-  return result
 }

@@ -116,7 +116,7 @@ struct TemplateTokens: Sequence, IteratorProtocol {
     let codePart = remainingText.dropFirst(2)
 
     // Use Swift tokenizer to find the real closing }
-    let closeIndex = tokenizeSwiftToUnmatchedCloseCurly(codePart)
+    let closeIndex = codePart.indexOfFirstSwiftUnmatchedCloseCurly()
 
     if closeIndex < codePart.endIndex {
       // Include ${ + code + }
@@ -138,7 +138,7 @@ struct TemplateTokens: Sequence, IteratorProtocol {
     let codePart = remainingText.dropFirst(2)
 
     // Use Swift tokenizer to find the real closing }
-    let closeIndex = tokenizeSwiftToUnmatchedCloseCurly(codePart)
+    let closeIndex = codePart.indexOfFirstSwiftUnmatchedCloseCurly()
 
     if closeIndex < codePart.endIndex {
       let afterClose = codePart.index(after: closeIndex)
@@ -190,30 +190,32 @@ struct TemplateTokens: Sequence, IteratorProtocol {
 
 // MARK: - Swift Tokenization
 
-/// Returns the index of the first unmatched `}` in Swift code,
-/// or `code.endIndex` if none exists.
-func tokenizeSwiftToUnmatchedCloseCurly(_ code: Substring) -> String.Index {
-  // Parse to get tokens, which automatically handles braces within strings and comments.
-  let parsed = Parser.parse(source: String(code))
+extension StringProtocol {
+  /// The index of the first unmatched `}` when parsed as Swift code, or `endIndex` if none exists.
+  ///
+  /// Uses SwiftSyntax to properly handle braces within strings and comments.
+  func indexOfFirstSwiftUnmatchedCloseCurly() -> String.Index {
+    // Parse to get tokens, which automatically handles braces within strings and comments.
+    let parsed = Parser.parse(source: String(self))
 
-  var nesting = 0
-  for token in parsed.tokens(viewMode: .sourceAccurate) {
-    if token.tokenKind == .leftBrace {
-      nesting += 1
-    } else if token.tokenKind == .rightBrace {
-      nesting -= 1
-      if nesting < 0 {
-        return convertUTF8OffsetToIndex(
-          token.positionAfterSkippingLeadingTrivia.utf8Offset, in: code)
+    var nesting = 0
+    for token in parsed.tokens(viewMode: .sourceAccurate) {
+      if token.tokenKind == .leftBrace {
+        nesting += 1
+      } else if token.tokenKind == .rightBrace {
+        nesting -= 1
+        if nesting < 0 {
+          return indexFromUTF8Offset(token.positionAfterSkippingLeadingTrivia.utf8Offset)
+        }
       }
     }
+
+    return endIndex
   }
 
-  return code.endIndex
-}
-
-/// Converts a UTF-8 byte offset to a `String.Index` within the given substring.
-private func convertUTF8OffsetToIndex(_ utf8Offset: Int, in code: Substring) -> String.Index {
-  let utf8Index = code.utf8.index(code.utf8.startIndex, offsetBy: utf8Offset)
-  return String.Index(utf8Index, within: code) ?? code.endIndex
+  /// Converts a UTF-8 byte offset to a `String.Index`.
+  func indexFromUTF8Offset(_ utf8Offset: Int) -> String.Index {
+    let utf8Index = utf8.index(utf8.startIndex, offsetBy: utf8Offset)
+    return String.Index(utf8Index, within: self) ?? endIndex
+  }
 }

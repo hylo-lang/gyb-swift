@@ -4,49 +4,33 @@ import Testing
 
 @Test("execute simple literal template")
 func execute_literalTemplate() throws {
-  let text = "Hello, World!"
-  let result = try execute(text)
-
-  #expect(result == "Hello, World!")
+  #expect(try execute("Hello, World!") == "Hello, World!")
 }
 
 @Test("execute template with escaped symbols")
 func execute_templateWithEscapedSymbols() throws {
-  let text = "Price: $$50"
-  let result = try execute(text)
-
-  #expect(result == "Price: $50")
+  #expect(try execute("Price: $$50") == "Price: $50")
 }
 
 @Test("substitution with bound variable")
 func substitution_withSimpleBinding() throws {
-  let text = "x = ${x}"
-  let result = try execute(text, bindings: ["x": "42"])
-  #expect(result == "x = 42")
+  #expect(try execute("x = ${x}", bindings: ["x": "42"]) == "x = 42")
 }
 
 @Test("empty template")
 func execute_emptyTemplate() throws {
-  let text = ""
-  let result = try execute(text)
-
-  #expect(result == "")
+  #expect(try execute("") == "")
 }
 
 @Test("template with only whitespace")
 func execute_whitespaceOnly() throws {
   let text = "   \n\t\n   "
-  let result = try execute(text)
-
-  #expect(result == text)
+  #expect(try execute(text) == text)
 }
 
 @Test("mixed literal and symbols")
 func execute_mixedLiteralsAndSymbols() throws {
-  let text = "Regular $$text with %%symbols"
-  let result = try execute(text)
-
-  #expect(result == "Regular $text with %symbols")
+  #expect(try execute("Regular $$text with %%symbols") == "Regular $text with %symbols")
 }
 
 @Test("malformed substitutions handled gracefully")
@@ -64,9 +48,7 @@ func parse_malformedSubstitution() {
 @Test("multiple literals in sequence")
 func execute_multipleLiterals() throws {
   let text = "First line\nSecond line\nThird line"
-  let result = try execute(text)
-
-  #expect(result == text)
+  #expect(try execute(text) == text)
 }
 
 @Test("line directive generation")

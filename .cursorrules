@@ -44,12 +44,19 @@ When invoking `swiftc`, pass `-module-cache-path` with a temporary directory to 
 
 Avoid putting type information in non-type names. Variable names should reflect the role of the value, if at all possible. If you can't find a better name for a variable than one that reflects its type, use a single letter name.
 
+Extension property and method names must be clear about what they return. Use gerunds (verbs ending in -ing) for transformations (e.g., `normalizingLineEndings()` not `normalizedLineEndings`).
+
+Avoid computed properties that aren't O(1). Any operation that scans or transforms the entire collection should be a method, not a property.
+
+Only use intermediate variables where they reduce nesting or significantly reduce code size. Variables used only once should be avoided.
+
 ## Documentation Guidelines
 
 - Every declaration outside a function body needs a doc comment except for tests and declarations that satisfy protocol requirements.
 - Capture the complete contract in concise summaries following better-code contracts principles
 - Avoid verbose parameter blocks when good naming and a clear summary suffice
 - Name parameters in summary (e.g., "`nodes`'s text") to show their roles precisely
+- Use `self` rather than "this T" where T is the type of `self` (e.g., "`self` decoded as UTF-8" not "This data decoded as UTF-8")
 - Raise the level of abstraction - focus on semantic meaning rather than implementation details
 - Doc comments describe the contract (what, not how). Implementation details and rationale belong in regular comments inside the function body.
 - When multiple sentences are needed, separate them with a blank line

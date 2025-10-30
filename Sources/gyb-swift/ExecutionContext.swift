@@ -38,8 +38,8 @@ struct CodeGenerator {
   /// Whether to emit line directives in the template output.
   let emitLineDirectives: Bool
 
-  /// Precomputed line start positions for efficient line number calculation.
-  private let lineStarts: [String.Index]
+  /// Precomputed line boundaries for efficient line number calculation.
+  private let lineBounds: [String.Index]
 
   init(
     templateText: String,
@@ -51,7 +51,7 @@ struct CodeGenerator {
     self.filename = filename
     self.lineDirective = lineDirective
     self.emitLineDirectives = emitLineDirectives
-    self.lineStarts = getLineStarts(templateText)
+    self.lineBounds = templateText.lineBounds()
   }
 
   /// Returns Swift code executing `nodes`, batching consecutive nodes of the same type.
@@ -64,9 +64,8 @@ struct CodeGenerator {
     let lines = chunks.map { chunk -> String in
       // Code nodes: emit with source location directive at the start
       if let firstCode = chunk.first as? CodeNode {
-        let lineNumber =
-          getLineNumber(
-            for: firstCode.sourcePosition, in: templateText, lineStarts: lineStarts)
+        let lineNumber = templateText.lineNumber(
+          at: firstCode.sourcePosition, lineBounds: lineBounds)
         let sourceLocationDirective = formatSourceLocation(
           #"#sourceLocation(file: "\(file)", line: \(line))"#,
           filename: filename,
@@ -147,7 +146,7 @@ struct CodeGenerator {
       throw GYBError.executionFailed(filename: filename, errorOutput: result.stderr)
     }
 
-    return normalizeLineEndings(result.stdout)
+    return result.stdout.normalizingLineEndings()
   }
 
   /// Executes `swiftCode` by compiling and running the executable.
@@ -203,7 +202,8 @@ struct CodeGenerator {
   /// Compiles Swift source file to executable.
   private func compileSwiftCode(source: URL, output: URL, moduleCache: URL) throws {
     let result = try resultsOfRunning(
-      ["swiftc",
+      [
+        "swiftc",
         source.platformString,
         "-o", output.platformString,
         "-module-cache-path", moduleCache.platformString,
@@ -222,7 +222,7 @@ struct CodeGenerator {
       throw GYBError.executionFailed(filename: filename, errorOutput: result.stderr)
     }
 
-    return normalizeLineEndings(result.stdout)
+    return result.stdout.normalizingLineEndings()
   }
 
   /// Returns the start position of `nodes`'s first element.
@@ -259,7 +259,7 @@ struct CodeGenerator {
 
     // Always emit #sourceLocation in the intermediate Swift code for error reporting
     let index = sourceLocationIndex(for: nodes)
-    let lineNumber = getLineNumber(for: index, in: templateText, lineStarts: lineStarts)
+    let lineNumber = templateText.lineNumber(at: index, lineBounds: lineBounds)
     let sourceLocationDirective = formatSourceLocation(
       #"#sourceLocation(file: "\(file)", line: \(line))"#,
       filename: filename,
@@ -275,7 +275,7 @@ struct CodeGenerator {
       output = outputDirective + "\n" + output
     }
 
-    let escaped = escapeForSwiftMultilineString(output)
+    let escaped = output.escapedForSwiftMultilineString()
     swiftCode.append(
       #"print(""""#
         + "\n\(escaped)\n"
@@ -290,14 +290,21 @@ struct CodeGenerator {
   }
 }
 
-/// Returns `text` escaped for Swift multiline string literals, preserving `\(...)` interpolations.
-private func escapeForSwiftMultilineString(_ text: String) -> String {
-  return
-    text
-    .replacingOccurrences(of: #"\"#, with: #"\\"#)
-    .replacingOccurrences(of: #"""""#, with: #"\"\"\""#)
-    // Undo escaping for interpolations so \(expr) is undisturbed.
-    .replacingOccurrences(of: #"\\("#, with: #"\("#)
+extension String {
+  /// Returns `self` escaped for Swift multiline string literals, preserving `\(...)` interpolations.
+  func escapedForSwiftMultilineString() -> String {
+    replacingOccurrences(of: #"\"#, with: #"\\"#)
+      .replacingOccurrences(of: #"""""#, with: #"\"\"\""#)
+      // Undo escaping for interpolations so \(expr) is undisturbed.
+      .replacingOccurrences(of: #"\\("#, with: #"\("#)
+  }
+
+  /// Returns `self` with line endings normalized to Unix style (`\n`) for cross-platform consistency.
+  ///
+  /// On Windows, Swift's print() outputs `\r\n` line endings, but our tests expect `\n`.
+  func normalizingLineEndings() -> String {
+    replacingOccurrences(of: "\r\n", with: "\n")
+  }
 }
 
 /// Returns `template`'s `\(file)` and `\(line)` placeholders replaced by `filename` and `line`.
@@ -306,11 +313,4 @@ private func formatSourceLocation(_ template: String, filename: String, line: In
     template
     .replacingOccurrences(of: #"\(file)"#, with: filename)
     .replacingOccurrences(of: #"\(line)"#, with: "\(line)")
-}
-
-/// Normalizes line endings to Unix style (`\n`) for cross-platform consistency.
-///
-/// On Windows, Swift's print() outputs `\r\n` line endings, but our tests expect `\n`.
-private func normalizeLineEndings(_ text: String) -> String {
-  return text.replacingOccurrences(of: "\r\n", with: "\n")
 }

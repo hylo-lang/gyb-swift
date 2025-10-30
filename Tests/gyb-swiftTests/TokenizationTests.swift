@@ -6,7 +6,6 @@ import Testing
 func tokenize_literal() {
   var tokenizer = TemplateTokens(text: "Hello, World!")
   let token = tokenizer.next()
-
   #expect(token?.kind == .literal)
   #expect(token?.text == "Hello, World!")
 }
@@ -195,9 +194,7 @@ func multilineString_withDelimiter() {
 @Test("tokenize % code lines")
 func tokenize_codeLines() {
   var tokenizer = TemplateTokens(text: "% let x = 10\n")
-  let token = tokenizer.next()
-
-  #expect(token?.kind == .gybLines)
+  #expect(tokenizer.next()?.kind == .gybLines)
 }
 
 @Test("tokenize template with %for/%end")
