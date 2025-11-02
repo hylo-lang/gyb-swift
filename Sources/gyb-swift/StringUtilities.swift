@@ -13,10 +13,10 @@ struct Lines<Content: StringProtocol>: RandomAccessCollection {
   /// Start index of each line followed by `content.endIndex`.
   let lineBounds: [Content.Index]
 
-  /// Creates lines from `content`, computing line boundaries.
+  /// Creates lines from `content`.
   init(_ content: Content) {
     self.content = content
-    self.lineBounds = Self.computeLineBounds(in: content)
+    self.lineBounds = Self.lineBounds(content)
   }
 
   /// Creates lines from `content` using precomputed `lineBounds`.
@@ -57,7 +57,6 @@ struct Lines<Content: StringProtocol>: RandomAccessCollection {
       ? content.endIndex
       : lineBounds[bounds.upperBound]
     let slicedContent = content[contentStart..<contentEnd]
-    // Recompute line bounds for the sliced content
     return Lines<Content.SubSequence>(slicedContent)
   }
 
@@ -77,10 +76,9 @@ struct Lines<Content: StringProtocol>: RandomAccessCollection {
     return lineNum > 0 ? lineNum - 1 : nil
   }
 
-  /// Computes line boundaries for `content`.
-  ///
-  /// Uses split to handle all newline types (LF, CR, CRLF) correctly.
-  private static func computeLineBounds(in content: Content) -> [Content.Index] {
+  /// Returns line boundaries for `content`.
+  private static func lineBounds(_ content: Content) -> [Content.Index] {
+    // Uses split to handle all newline types (LF, CR, CRLF) correctly.
     // Split by newlines and get the start index of each segment
     let bounds = content.split(omittingEmptySubsequences: false) { $0.isNewline }
       .map(\.startIndex)

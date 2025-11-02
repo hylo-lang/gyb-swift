@@ -25,7 +25,7 @@ func assertFixesCode(
   var processedExpected = expected
 
   // Count directives in expected output
-  let directiveCount = countSourceLocationDirectives(in: expected)
+  let directiveCount = countSourceLocationDirectives(expected)
 
   if directiveCount == 1 && !input.contains("assertLine(#)") {
     // Single directive without explicit assertLine: append automatically
@@ -62,12 +62,12 @@ func assertFixesCode(
 }
 
 /// The number of `#sourceLocation` directives in `code`.
-private func countSourceLocationDirectives(in code: String) -> Int {
+private func countSourceLocationDirectives(_ code: String) -> Int {
   return code.components(separatedBy: "#sourceLocation").count - 1
 }
 
 /// The line number specified in a `#sourceLocation` directive, or `nil` if not found.
-private func extractLineNumber(from directiveLine: String) -> Int? {
+private func extractLineNumber(_ directiveLine: String) -> Int? {
   let numberPattern = #"line: (\d+)"#
   guard let numberMatch = directiveLine.range(of: numberPattern, options: .regularExpression) else {
     return nil
@@ -82,7 +82,7 @@ private func extractLineNumber(from directiveLine: String) -> Int? {
 }
 
 /// `lines` with `assertLine(#)` placeholders replaced with actual line numbers.
-private func replaceAssertLinePlaceholders(in lines: [String]) -> [String] {
+private func replaceAssertLinePlaceholders(_ lines: [String]) -> [String] {
   var result = lines
   var lastDirectiveLine: Int? = nil
 
@@ -91,7 +91,7 @@ private func replaceAssertLinePlaceholders(in lines: [String]) -> [String] {
       of: #"#sourceLocation\(file: "[^"]*", line: (\d+)\)"#, options: .regularExpression)
       != nil
     {
-      lastDirectiveLine = extractLineNumber(from: result[i])
+      lastDirectiveLine = extractLineNumber(result[i])
     }
 
     if result[i].contains("assertLine(#)"), let directiveLine = lastDirectiveLine {
@@ -170,7 +170,7 @@ private func verifySourceLocationDirectives(
     """
 
   let lines = code.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-  let processedLines = replaceAssertLinePlaceholders(in: lines)
+  let processedLines = replaceAssertLinePlaceholders(lines)
   let executable = assertLineFunction + processedLines.joined(separator: "\n")
 
   runSwiftScript(executable, sourceLocation: sourceLocation)

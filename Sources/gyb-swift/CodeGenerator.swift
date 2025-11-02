@@ -27,7 +27,7 @@ struct CodeGenerator {
   }
 
   /// Returns the template body executing `nodes`, batching consecutive nodes of the same type.
-  func generateBody(for nodes: [ASTNode]) -> String {
+  func generateBody(_ nodes: [ASTNode]) -> String {
     // Group consecutive nodes: output nodes together, code nodes together
     let chunks = nodes.chunked { prev, curr in
       (isOutputNode(prev) && isOutputNode(curr)) || (prev is CodeNode && curr is CodeNode)
@@ -46,7 +46,7 @@ struct CodeGenerator {
       }
 
       // Output nodes are batched into print statements
-      return printStatement(for: chunk)
+      return printStatement(chunk)
     }
 
     return lines.joined(separator: "\n")
@@ -61,7 +61,7 @@ struct CodeGenerator {
       .joined(separator: "\n")
 
     // Generate template body
-    let body = generateBody(for: ast)
+    let body = generateBody(ast)
 
     let code = """
       // Bindings
@@ -77,7 +77,7 @@ struct CodeGenerator {
   }
 
   /// Returns the start position of `nodes`'s first element.
-  private func sourceLocationIndex(for nodes: AST.SubSequence) -> String.Index {
+  private func positionOfFirst(_ nodes: AST.SubSequence) -> String.Index {
     let first = nodes.first!
 
     if let literal = first as? LiteralNode {
@@ -89,7 +89,7 @@ struct CodeGenerator {
   }
 
   /// Returns `nodes`'s text content as strings, with substitutions formatted as `\(expression)`.
-  private func textContent(from nodes: AST.SubSequence) -> [String] {
+  private func textContent(_ nodes: AST.SubSequence) -> [String] {
     return nodes.map { node in
       if let literal = node as? LiteralNode {
         return String(literal.text)
@@ -108,12 +108,12 @@ struct CodeGenerator {
   ///
   /// Always includes a `#sourceLocation` directive in the generated Swift code for error reporting.
   /// Optionally prints line directives into the output when configured.
-  private func printStatement(for nodes: AST.SubSequence) -> String {
-    let combined = textContent(from: nodes).joined()
+  private func printStatement(_ nodes: AST.SubSequence) -> String {
+    let combined = textContent(nodes).joined()
     var swiftCode: [String] = []
 
     // Always emit #sourceLocation in the intermediate Swift code for error reporting
-    let index = sourceLocationIndex(for: nodes)
+    let index = positionOfFirst(nodes)
     let lineNumber = sourceTemplate.lineNumber(at: index)
     swiftCode.append(sourceLocationDirective(file: filename, line: lineNumber))
 
