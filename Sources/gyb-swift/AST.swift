@@ -33,7 +33,8 @@ struct CodeNode: ASTNode {
 
 // MARK: - Substitution Node
 
-/// A ${...} expression whose result is converted to text and inserted into the output.
+/// A ${...} expression whose contents are evaluated as Swift,
+/// converted to text, and inserted into the output.
 struct SubstitutionNode: ASTNode {
   /// The Swift expression to evaluate.
   let expression: Substring
@@ -45,9 +46,7 @@ struct SubstitutionNode: ASTNode {
 
 // MARK: - AST
 
-/// A parsed template represented as a sequence of nodes.
-///
-/// Note: Nesting is handled by Swift's compiler, not by the parser.
+/// A parsed template represented as a sequence of top-level AST nodes.
 typealias AST = [ASTNode]
 
 extension AST {
