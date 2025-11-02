@@ -4,33 +4,33 @@ import Testing
 
 @Test("parse simple literal template")
 func parse_literalTemplate() throws {
-  let ast = try AST(filename: "test", text: "Hello, World!")
+  let ast = try AST(filename: "test", template: "Hello, World!")
   #expect(ast.count == 1)
   #expect(ast[0] is LiteralNode)
 }
 
 @Test("parse template with escaped symbols")
 func parse_templateWithEscapedSymbols() throws {
-  #expect(try AST(filename: "test", text: "$$dollar and %%percent").count >= 1)
+  #expect(try AST(filename: "test", template: "$$dollar and %%percent").count >= 1)
 }
 
 @Test("parse substitution")
 func parse_substitution() throws {
-  let ast = try AST(filename: "test", text: "${x}")
+  let ast = try AST(filename: "test", template: "${x}")
   #expect(ast.count == 1)
   #expect(ast[0] is SubstitutionNode)
 }
 
 @Test("parse code block")
 func parse_codeBlock() throws {
-  let ast = try AST(filename: "test", text: "%{ let x = 42 }%")
+  let ast = try AST(filename: "test", template: "%{ let x = 42 }%")
   #expect(ast.count == 1)
   #expect(ast[0] is CodeNode)
 }
 
 @Test("AST structure for mixed template")
 func ast_structure() throws {
-  let ast = try AST(filename: "test", text: "Text ${x} more text")
+  let ast = try AST(filename: "test", template: "Text ${x} more text")
   #expect(ast.count >= 1)
   #expect(ast.contains { $0 is SubstitutionNode })
 }

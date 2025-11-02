@@ -4,31 +4,31 @@ import Testing
 
 // MARK: - Test Helpers
 
-/// Executes `text` as a template and returns the output.
+/// Executes `template` and returns the output.
 func execute(
-  _ text: String,
+  _ template: String,
   bindings: [String: String] = [:],
   filename: String = "test"
 ) throws -> String {
-  let ast = try AST(filename: filename, text: text)
+  let ast = try AST(filename: filename, template: template)
   let generator = CodeGenerator(
-    templateText: text,
+    template: template,
     filename: filename
   )
   return try generator.execute(ast, bindings: bindings)
 }
 
-/// Generates Swift code for `text` as a template with `bindings`.
+/// Generates Swift code for `template` with `bindings`.
 func generateCode(
-  _ text: String,
+  _ template: String,
   bindings: [String: String] = [:],
   filename: String = "test.gyb",
   lineDirective: String = "",
   emitLineDirectives: Bool = false
 ) throws -> String {
-  let ast = try AST(filename: filename, text: text)
+  let ast = try AST(filename: filename, template: template)
   let generator = CodeGenerator(
-    templateText: text,
+    template: template,
     filename: filename,
     lineDirective: lineDirective,
     emitLineDirectives: emitLineDirectives
@@ -36,7 +36,7 @@ func generateCode(
   return generator.generateCompleteProgram(ast, bindings: bindings)
 }
 
-/// Helper to create a token with String text for testing
-func token(_ kind: TemplateToken.Kind, _ text: String) -> TemplateToken {
-  TemplateToken(kind: kind, text: text[...])
+/// Helper to create a token with String content for testing
+func token(_ kind: TemplateToken.Kind, _ content: String) -> TemplateToken {
+  TemplateToken(kind: kind, text: content[...])
 }

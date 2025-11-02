@@ -6,14 +6,14 @@ import Testing
 
 @Test("realistic template with multiple features")
 func integration_realisticTemplate() throws {
-  let text = """
+  let template = """
     // Generated file
     struct Example {
         let count = ${count}
     }
     """
 
-  let result = try execute(text, bindings: ["count": "42"], filename: "test.gyb")
+  let result = try execute(template, bindings: ["count": "42"], filename: "test.gyb")
 
   let expected = """
     // Generated file
@@ -27,13 +27,13 @@ func integration_realisticTemplate() throws {
 @Test("execute Swift template with control flow using % }")
 // Swift templates use Swift syntax with unmatched braces
 func execute_swiftControlFlow() throws {
-  let text = """
+  let template = """
     % for i in 0..<3 {
     ${i}
     % }
     """
 
-  let result = try execute(text, filename: "test.gyb")
+  let result = try execute(template, filename: "test.gyb")
 
   let expected = """
     0
@@ -46,21 +46,21 @@ func execute_swiftControlFlow() throws {
 
 @Test("execute template with if control flow")
 func execute_swiftIf() throws {
-  let text = """
+  let template = """
     % let x = 5
     % if x > 3 {
     large
     % }
     """
 
-  let result = try execute(text)
+  let result = try execute(template)
 
   #expect(result == "large\n")
 }
 
 @Test("execute template with nested control flow")
 func execute_nestedControlFlow() throws {
-  let text = """
+  let template = """
     % for x in 1...2 {
     %   for y in 1...2 {
     (${x},${y})
@@ -68,7 +68,7 @@ func execute_nestedControlFlow() throws {
     % }
     """
 
-  let result = try execute(text)
+  let result = try execute(template)
 
   let expected = """
     (1,1)
@@ -82,7 +82,7 @@ func execute_nestedControlFlow() throws {
 
 @Test("template structure is preserved")
 func integration_templateStructurePreservation() throws {
-  let text = """
+  let template = """
     Header
 
     Body content
@@ -90,16 +90,16 @@ func integration_templateStructurePreservation() throws {
     Footer
     """
 
-  let result = try execute(text)
+  let result = try execute(template)
 
-  #expect(result == text)
+  #expect(result == template)
 }
 
 @Test("--template-generates-swift emits and fixes #sourceLocation directives")
 func integration_templateGeneratesSwift() throws {
   // Test that when emitting #sourceLocation directives in the output,
   // they are automatically fixed when needed
-  let text = """
+  let template = """
     % let x = 1
     % if x == 1 {
     func foo() { print("one") }
@@ -109,9 +109,9 @@ func integration_templateGeneratesSwift() throws {
     """
 
   // Generate with #sourceLocation directives in the output
-  let ast = try AST(filename: "test.gyb", text: text)
+  let ast = try AST(filename: "test.gyb", template: template)
   let generator = CodeGenerator(
-    templateText: text,
+    template: template,
     filename: "test.gyb",
     lineDirective: #"#sourceLocation(file: "\(file)", line: \(line))"#,
     emitLineDirectives: true

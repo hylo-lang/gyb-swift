@@ -39,12 +39,12 @@ struct CodeGenerator {
   let emitLineDirectives: Bool
 
   init(
-    templateText: String,
+    template: String,
     filename: String = "",
     lineDirective: String = "",
     emitLineDirectives: Bool = false
   ) {
-    self.sourceTemplate = Lines(templateText)
+    self.sourceTemplate = Lines(template)
     self.filename = filename
     self.lineDirective = lineDirective
     self.emitLineDirectives = emitLineDirectives

@@ -121,9 +121,9 @@ struct TemplateTokens: Sequence, IteratorProtocol {
     if close < codePart.endIndex {
       // Include ${ + code + }
       let end = remainingText.index(after: close)
-      let tokenText = remainingText[..<end]
+      let token = remainingText[..<end]
       remainingText = remainingText[end...]
-      return TemplateToken(kind: .substitutionOpen, text: tokenText)
+      return TemplateToken(kind: .substitutionOpen, text: token)
     }
 
     // Unclosed substitution - treat as literal
@@ -151,9 +151,9 @@ struct TemplateTokens: Sequence, IteratorProtocol {
           end = remainingText.index(after: end)
         }
 
-        let tokenText = remainingText[..<end]
+        let token = remainingText[..<end]
         remainingText = remainingText[end...]
-        return TemplateToken(kind: .gybBlock, text: tokenText)
+        return TemplateToken(kind: .gybBlock, text: token)
       }
     }
 
@@ -181,10 +181,10 @@ struct TemplateTokens: Sequence, IteratorProtocol {
     let literal = remainingText.prefix(while: { $0 != "$" && $0 != "%" })
 
     // If we got nothing, take one character (shouldn't happen but be safe)
-    let tokenText = literal.isEmpty ? remainingText.prefix(1) : literal
-    remainingText = remainingText.dropFirst(tokenText.count)
+    let token = literal.isEmpty ? remainingText.prefix(1) : literal
+    remainingText = remainingText.dropFirst(token.count)
 
-    return TemplateToken(kind: .literal, text: tokenText)
+    return TemplateToken(kind: .literal, text: token)
   }
 }
 

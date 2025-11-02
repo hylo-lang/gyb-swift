@@ -73,10 +73,10 @@ private func extractLineNumber(from directiveLine: String) -> Int? {
     return nil
   }
 
-  let numberText = directiveLine[numberMatch]
-  guard let colonIndex = numberText.firstIndex(of: ":") else { return nil }
+  let number = directiveLine[numberMatch]
+  guard let colonIndex = number.firstIndex(of: ":") else { return nil }
 
-  let afterColon = numberText[numberText.index(after: colonIndex)...].trimmingCharacters(
+  let afterColon = number[number.index(after: colonIndex)...].trimmingCharacters(
     in: .whitespaces)
   return Int(afterColon)
 }

@@ -131,19 +131,19 @@ struct GYBSwift: ParsableCommand {
     )
 
     // Read template
-    let templateText: String
+    let template: String
     let filename: String
 
     if file == "-" {
       // Read from stdin
-      templateText = AnyIterator { readLine(strippingNewline: false) }
+      template = AnyIterator { readLine(strippingNewline: false) }
         .joined()
       filename = "stdin"
     } else {
       // Read from file
       let source = URL(fileURLWithPath: file)
       do {
-        templateText = try String(contentsOf: source, encoding: .utf8)
+        template = try String(contentsOf: source, encoding: .utf8)
       } catch {
         throw Failure("Failed to read template file '\(file)'", error)
       }
@@ -151,7 +151,7 @@ struct GYBSwift: ParsableCommand {
     }
 
     // Parse template
-    let ast = try AST(filename: filename, text: templateText)
+    let ast = try AST(filename: filename, template: template)
 
     // Dump AST if requested
     if dump {
@@ -161,7 +161,7 @@ struct GYBSwift: ParsableCommand {
 
     // Create code generator for template
     let generator = CodeGenerator(
-      templateText: templateText,
+      template: template,
       filename: filename,
       lineDirective: effectiveLineDirective,
       emitLineDirectives: !effectiveLineDirective.isEmpty

@@ -50,9 +50,9 @@ struct SubstitutionNode: ASTNode {
 typealias AST = [ASTNode]
 
 extension AST {
-  /// Creates an AST by parsing `text` from `filename`.
-  init(filename: String, text: String) throws {
-    var parser = Parser(filename: filename, text: text)
+  /// Creates an AST by parsing `template` from `filename`.
+  init(filename: String, template: String) throws {
+    var parser = Parser(filename: filename, text: template)
     self = try parser.parse()
   }
 }
@@ -79,18 +79,18 @@ extension StringProtocol {
 struct Parser {
   /// Template source filename for error reporting.
   let filename: String
-  /// The complete template text being parsed.
-  let templateText: String
+  /// The complete template being parsed.
+  let template: String
 
   init(filename: String, text: String) {
     self.filename = filename
-    self.templateText = text
+    self.template = text
   }
 
   /// Returns AST nodes parsed from the template.
   /// Simply converts each token to a node - no nesting logic.
   mutating func parse() throws -> AST {
-    return TemplateTokens(text: templateText).map { token in
+    return TemplateTokens(text: template).map { token in
       switch token.kind {
       case .literal:
         return LiteralNode(text: token.text)
