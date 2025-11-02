@@ -196,7 +196,7 @@ extension StringProtocol {
   /// Uses SwiftSyntax to properly handle braces within strings and comments.
   func indexOfFirstSwiftUnmatchedCloseCurly() -> String.Index {
     // Parse to get tokens, which automatically handles braces within strings and comments.
-    let parsed = Parser.parse(source: String(self))
+    let parsed = SwiftParser.Parser.parse(source: String(self))
 
     var nesting = 0
     for token in parsed.tokens(viewMode: .sourceAccurate) {

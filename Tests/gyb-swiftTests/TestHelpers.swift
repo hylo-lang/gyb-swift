@@ -10,7 +10,7 @@ func execute(
   bindings: [String: String] = [:],
   filename: String = "test"
 ) throws -> String {
-  let ast = try parseTemplate(filename: filename, text: text)
+  let ast = try AST(filename: filename, text: text)
   let generator = CodeGenerator(
     templateText: text,
     filename: filename
@@ -26,7 +26,7 @@ func generateCode(
   lineDirective: String = "",
   emitLineDirectives: Bool = false
 ) throws -> String {
-  let ast = try parseTemplate(filename: filename, text: text)
+  let ast = try AST(filename: filename, text: text)
   let generator = CodeGenerator(
     templateText: text,
     filename: filename,

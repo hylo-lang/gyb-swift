@@ -50,6 +50,14 @@ struct SubstitutionNode: ASTNode {
 /// Note: Nesting is handled by Swift's compiler, not by the parser.
 typealias AST = [ASTNode]
 
+extension AST {
+  /// Creates an AST by parsing `text` from `filename`.
+  init(filename: String, text: String) throws {
+    var parser = Parser(filename: filename, text: text)
+    self = try parser.parse()
+  }
+}
+
 // MARK: - Helper Extensions
 
 extension StringProtocol {
@@ -66,10 +74,10 @@ extension StringProtocol {
   }
 }
 
-// MARK: - Parse Context
+// MARK: - Parser
 
-/// Maintains parsing state while converting templates to AST.
-struct ParseContext {
+/// Parses template text into an AST.
+struct Parser {
   /// Template source filename for error reporting.
   let filename: String
   /// The complete template text being parsed.
@@ -82,7 +90,7 @@ struct ParseContext {
 
   /// Returns AST nodes parsed from the template.
   /// Simply converts each token to a node - no nesting logic.
-  mutating func parseNodes() throws -> [ASTNode] {
+  mutating func parse() throws -> AST {
     return TemplateTokens(text: templateText).map { token in
       switch token.kind {
       case .literal:
@@ -118,10 +126,4 @@ struct ParseContext {
       }
       .joined(separator: "\n")[...]
   }
-}
-
-/// Returns an AST from template `text`.
-func parseTemplate(filename: String, text: String) throws -> AST {
-  var context = ParseContext(filename: filename, text: text)
-  return try context.parseNodes()
 }

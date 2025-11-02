@@ -192,7 +192,7 @@ func sourceLocation_multiLineCode() throws {
   #expect(code == expectedCode)
 
   // Verify the code compiles and executes
-  let ast = try parseTemplate(filename: "multiline.gyb", text: text)
+  let ast = try AST(filename: "multiline.gyb", text: text)
   let generator = CodeGenerator(templateText: text, filename: "multiline.gyb")
   let result = try generator.execute(ast)
   #expect(result == "Hello, World!")

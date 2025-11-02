@@ -151,7 +151,7 @@ struct GYBSwift: ParsableCommand {
     }
 
     // Parse template
-    let ast = try parseTemplate(filename: filename, text: templateText)
+    let ast = try AST(filename: filename, text: templateText)
 
     // Dump AST if requested
     if dump {

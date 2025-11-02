@@ -109,7 +109,7 @@ func integration_templateGeneratesSwift() throws {
     """
 
   // Generate with #sourceLocation directives in the output
-  let ast = try parseTemplate(filename: "test.gyb", text: text)
+  let ast = try AST(filename: "test.gyb", text: text)
   let generator = CodeGenerator(
     templateText: text,
     filename: "test.gyb",
