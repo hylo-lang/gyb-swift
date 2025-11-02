@@ -101,8 +101,6 @@ func sourceLocation_correctLineNumbers() throws {
   let code = try generateCode(text, filename: "test.gyb")
 
   let expectedCode = #"""
-    import Foundation
-
     // Bindings
 
 
@@ -131,8 +129,6 @@ func sourceLocation_codeBlocks() throws {
   let code = try generateCode(text, filename: "code.gyb")
 
   let expectedCode = #"""
-    import Foundation
-
     // Bindings
 
 
@@ -173,8 +169,6 @@ func sourceLocation_multiLineCode() throws {
   let code = try generateCode(text, filename: "multiline.gyb")
 
   let expectedCode = #"""
-    import Foundation
-
     // Bindings
 
 

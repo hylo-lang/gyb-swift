@@ -19,8 +19,6 @@ func lineDirective_loopIterations() throws {
   let code = try generateCode(text, bindings: ["x": "1"])
 
   let expectedCode = #"""
-    import Foundation
-
     // Bindings
     let x = "1"
 
@@ -83,8 +81,6 @@ func lineDirective_afterCodeOnlyLines() throws {
   let code = try generateCode(text, bindings: [:])
 
   let expectedCode = #"""
-    import Foundation
-
     // Bindings
 
 
@@ -164,8 +160,6 @@ func integration_comprehensiveExpandTest() throws {
   let code = try generateCode(text, bindings: ["x": "2"])
 
   let expectedCode = ##"""
-    import Foundation
-
     // Bindings
     let x = "2"
 
@@ -232,8 +226,6 @@ func lineDirective_alternativeFormat() throws {
   let code = try generateCode(text, bindings: [:])
 
   let expectedCode = #"""
-    import Foundation
-
     // Bindings
 
 

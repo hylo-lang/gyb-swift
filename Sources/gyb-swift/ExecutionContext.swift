@@ -90,8 +90,6 @@ struct CodeGenerator {
     let templateCode = generateCode(for: ast)
 
     let code = """
-      import Foundation
-
       // Bindings
       \(bindingsCode)
 

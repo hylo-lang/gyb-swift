@@ -58,8 +58,6 @@ func execute_lineDirectives() throws {
   // Verify exact generated code structure
   let code = try generateCode(text, bindings: [:])
   let expectedCode = #"""
-    import Foundation
-
     // Bindings
 
 
