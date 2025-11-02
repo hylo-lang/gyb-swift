@@ -117,7 +117,9 @@ func integration_templateGeneratesSwift() throws {
     emitLineDirectives: true
   )
 
-  var result = try generator.execute(ast, bindings: [:])
+  let swiftCode = generator.generateCompleteProgram(ast, bindings: [:])
+  let runner = SwiftScriptRunner(filename: "test.gyb")
+  var result = try runner.execute(swiftCode)
 
   // Apply the fixing strategy (simulating --template-generates-swift behavior)
   result = fixSourceLocationPlacement(result)

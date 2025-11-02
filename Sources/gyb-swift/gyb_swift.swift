@@ -180,9 +180,10 @@ struct GYBSwift: ParsableCommand {
       _ = FileManager.default.changeCurrentDirectoryPath(templateDir.path)
     }
 
-    // Execute template
-    var result = try generator.execute(
-      ast, bindings: bindings, forceCompilation: forceTemplateCompilation)
+    // Generate and execute Swift code
+    let swiftCode = generator.generateCompleteProgram(ast, bindings: bindings)
+    let runner = SwiftScriptRunner(filename: filename)
+    var result = try runner.execute(swiftCode, forceCompilation: forceTemplateCompilation)
 
     // Fix #sourceLocation directives in template output if needed
     if templateGeneratesSwift {

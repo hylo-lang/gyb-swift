@@ -15,7 +15,9 @@ func execute(
     template: template,
     filename: filename
   )
-  return try generator.execute(ast, bindings: bindings)
+  let swiftCode = generator.generateCompleteProgram(ast, bindings: bindings)
+  let runner = SwiftScriptRunner(filename: filename)
+  return try runner.execute(swiftCode)
 }
 
 /// Generates Swift code for `template` with `bindings`.

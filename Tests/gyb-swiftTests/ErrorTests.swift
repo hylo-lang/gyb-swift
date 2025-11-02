@@ -188,7 +188,9 @@ func sourceLocation_multiLineCode() throws {
   // Verify the code compiles and executes
   let ast = try AST(filename: "multiline.gyb", template: text)
   let generator = CodeGenerator(template: text, filename: "multiline.gyb")
-  let result = try generator.execute(ast)
+  let swiftCode = generator.generateCompleteProgram(ast, bindings: [:])
+  let runner = SwiftScriptRunner(filename: "multiline.gyb")
+  let result = try runner.execute(swiftCode)
   #expect(result == "Hello, World!")
 }
 
