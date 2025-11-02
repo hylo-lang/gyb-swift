@@ -104,7 +104,7 @@ func sourceLocation_correctLineNumbers() throws {
     // Bindings
 
 
-    // Generated code
+    // Template body
     #sourceLocation(file: "test.gyb", line: 1)
     print("""
     Line 1: Hello
@@ -132,7 +132,7 @@ func sourceLocation_codeBlocks() throws {
     // Bindings
 
 
-    // Generated code
+    // Template body
     #sourceLocation(file: "code.gyb", line: 1)
     print("""
     output
@@ -172,7 +172,7 @@ func sourceLocation_multiLineCode() throws {
     // Bindings
 
 
-    // Generated code
+    // Template body
     #sourceLocation(file: "multiline.gyb", line: 1)
     func greet(name: String) -> String {
     return "Hello, \(name)!"

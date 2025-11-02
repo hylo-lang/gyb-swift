@@ -61,7 +61,7 @@ func execute_lineDirectives() throws {
     // Bindings
 
 
-    // Generated code
+    // Template body
     #sourceLocation(file: "test.gyb", line: 1)
     print("""
     Line 1

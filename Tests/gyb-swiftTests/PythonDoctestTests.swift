@@ -22,7 +22,7 @@ func lineDirective_loopIterations() throws {
     // Bindings
     let x = "1"
 
-    // Generated code
+    // Template body
     #sourceLocation(file: "test.gyb", line: 1)
     print("""
     Nothing
@@ -84,7 +84,7 @@ func lineDirective_afterCodeOnlyLines() throws {
     // Bindings
 
 
-    // Generated code
+    // Template body
     #sourceLocation(file: "test.gyb", line: 1)
     print("""
     Nothing
@@ -163,7 +163,7 @@ func integration_comprehensiveExpandTest() throws {
     // Bindings
     let x = "2"
 
-    // Generated code
+    // Template body
     #sourceLocation(file: "test.gyb", line: 1)
     print("""
     ---
@@ -229,7 +229,7 @@ func lineDirective_alternativeFormat() throws {
     // Bindings
 
 
-    // Generated code
+    // Template body
     #sourceLocation(file: "test.gyb", line: 1)
     print("""
     Nothing

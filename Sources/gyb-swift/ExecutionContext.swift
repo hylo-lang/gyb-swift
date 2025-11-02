@@ -50,8 +50,8 @@ struct CodeGenerator {
     self.emitLineDirectives = emitLineDirectives
   }
 
-  /// Returns Swift code executing `nodes`, batching consecutive nodes of the same type.
-  func generateCode(for nodes: [ASTNode]) -> String {
+  /// Returns the template body executing `nodes`, batching consecutive nodes of the same type.
+  func generateBody(for nodes: [ASTNode]) -> String {
     // Group consecutive nodes: output nodes together, code nodes together
     let chunks = nodes.chunked { prev, curr in
       (isOutputNode(prev) && isOutputNode(curr)) || (prev is CodeNode && curr is CodeNode)
@@ -86,15 +86,15 @@ struct CodeGenerator {
       .map { "let \($0.key) = \(String(reflecting: $0.value))" }
       .joined(separator: "\n")
 
-    // Generate template code
-    let templateCode = generateCode(for: ast)
+    // Generate template body
+    let body = generateBody(for: ast)
 
     let code = """
       // Bindings
       \(bindingsCode)
 
-      // Generated code
-      \(templateCode)
+      // Template body
+      \(body)
 
       """
 
