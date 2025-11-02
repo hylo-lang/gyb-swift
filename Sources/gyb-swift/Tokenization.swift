@@ -116,13 +116,13 @@ struct TemplateTokens: Sequence, IteratorProtocol {
     let codePart = remainingText.dropFirst(2)
 
     // Use Swift tokenizer to find the real closing }
-    let closeIndex = codePart.indexOfFirstSwiftUnmatchedCloseCurly()
+    let close = codePart.indexOfFirstSwiftUnmatchedCloseCurly()
 
-    if closeIndex < codePart.endIndex {
+    if close < codePart.endIndex {
       // Include ${ + code + }
-      let endIndex = remainingText.index(after: closeIndex)
-      let tokenText = remainingText[..<endIndex]
-      remainingText = remainingText[endIndex...]
+      let end = remainingText.index(after: close)
+      let tokenText = remainingText[..<end]
+      remainingText = remainingText[end...]
       return TemplateToken(kind: .substitutionOpen, text: tokenText)
     }
 
@@ -138,21 +138,21 @@ struct TemplateTokens: Sequence, IteratorProtocol {
     let codePart = remainingText.dropFirst(2)
 
     // Use Swift tokenizer to find the real closing }
-    let closeIndex = codePart.indexOfFirstSwiftUnmatchedCloseCurly()
+    let close = codePart.indexOfFirstSwiftUnmatchedCloseCurly()
 
-    if closeIndex < codePart.endIndex {
-      let afterClose = codePart.index(after: closeIndex)
+    if close < codePart.endIndex {
+      let afterClose = codePart.index(after: close)
       if afterClose < codePart.endIndex && codePart[afterClose] == "%" {
         // Include %{ + code + }%
-        var endIndex = codePart.index(after: afterClose)
+        var end = codePart.index(after: afterClose)
 
         // Skip trailing newline if present
-        if endIndex < remainingText.endIndex && remainingText[endIndex].isNewline {
-          endIndex = remainingText.index(after: endIndex)
+        if end < remainingText.endIndex && remainingText[end].isNewline {
+          end = remainingText.index(after: end)
         }
 
-        let tokenText = remainingText[..<endIndex]
-        remainingText = remainingText[endIndex...]
+        let tokenText = remainingText[..<end]
+        remainingText = remainingText[end...]
         return TemplateToken(kind: .gybBlock, text: tokenText)
       }
     }

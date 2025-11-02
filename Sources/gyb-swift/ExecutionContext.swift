@@ -29,8 +29,8 @@ enum GYBError: Error, CustomStringConvertible {
 
 /// Generates Swift code from AST nodes with consistent configuration.
 struct CodeGenerator {
-  /// Original template text for source location tracking.
-  let templateText: String
+  /// Source template for location tracking.
+  let sourceTemplate: Lines<String>
   /// Template filename for source location directives.
   let filename: String
   /// Line directive format for output with `\(file)` and `\(line)` placeholders, or empty to omit.
@@ -38,20 +38,16 @@ struct CodeGenerator {
   /// Whether to emit line directives in the template output.
   let emitLineDirectives: Bool
 
-  /// Precomputed line boundaries for efficient line number calculation.
-  private let lineBounds: [String.Index]
-
   init(
     templateText: String,
     filename: String = "",
     lineDirective: String = "",
     emitLineDirectives: Bool = false
   ) {
-    self.templateText = templateText
+    self.sourceTemplate = Lines(templateText)
     self.filename = filename
     self.lineDirective = lineDirective
     self.emitLineDirectives = emitLineDirectives
-    self.lineBounds = templateText.lineBounds()
   }
 
   /// Returns Swift code executing `nodes`, batching consecutive nodes of the same type.
@@ -64,8 +60,7 @@ struct CodeGenerator {
     let lines = chunks.map { chunk -> String in
       // Code nodes: emit with source location directive at the start
       if let firstCode = chunk.first as? CodeNode {
-        let lineNumber = templateText.lineNumber(
-          at: firstCode.sourcePosition, lineBounds: lineBounds)
+        let lineNumber = sourceTemplate.lineNumber(at: firstCode.sourcePosition)
         let sourceLocationDirective = formatSourceLocation(
           #"#sourceLocation(file: "\(file)", line: \(line))"#,
           filename: filename,
@@ -259,7 +254,7 @@ struct CodeGenerator {
 
     // Always emit #sourceLocation in the intermediate Swift code for error reporting
     let index = sourceLocationIndex(for: nodes)
-    let lineNumber = templateText.lineNumber(at: index, lineBounds: lineBounds)
+    let lineNumber = sourceTemplate.lineNumber(at: index)
     let sourceLocationDirective = formatSourceLocation(
       #"#sourceLocation(file: "\(file)", line: \(line))"#,
       filename: filename,

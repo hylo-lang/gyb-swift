@@ -44,6 +44,8 @@ When invoking `swiftc`, pass `-module-cache-path` with a temporary directory to 
 
 Avoid putting type information in non-type names. Variable names should reflect the role of the value, if at all possible. If you can't find a better name for a variable than one that reflects its type, use a single letter name.
 
+Apply this principle everywhere ongoingly. For example: use `sourceTemplate` not `templateLines`, use `close` not `closeIndex`, use `end` not `endIndex`. The type is evident from the declaration.
+
 Extension property and method names must be clear about what they return. Use gerunds (verbs ending in -ing) for transformations (e.g., `normalizingLineEndings()` not `normalizedLineEndings`).
 
 Avoid computed properties that aren't O(1). Any operation that scans or transforms the entire collection should be a method, not a property.
