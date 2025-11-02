@@ -41,8 +41,8 @@ struct CodeGenerator {
         // Concatenate all code from consecutive code nodes
         let codeLines = chunk.compactMap { ($0 as? CodeNode)?.code }.map(String.init)
 
-          return sourceLocationDirective(file: filename, line: lineNumber) + "\n"
-            + codeLines.joined(separator: "\n")
+        return sourceLocationDirective(file: filename, line: lineNumber) + "\n"
+          + codeLines.joined(separator: "\n")
       }
 
       // Output nodes are batched into print statements
@@ -125,11 +125,16 @@ struct CodeGenerator {
       output = outputDirective + "\n" + output
     }
 
-    let escaped = output.escapedForSwiftMultilineString()
+    // Separated in formatting to avoid confusing Emacs swift-mode
+    // (https://github.com/swift-emacs/swift-mode/issues/200)
+    func quotes(_ i: Int) -> String { String(repeating: "\"", count: i) }
+
     swiftCode.append(
-      #"print(""""#
-        + "\n\(escaped)\n"
-        + #"""", terminator: "")"#)
+      """
+      print(\"""
+      \(output.escapedForSwiftMultilineString())
+      \""", terminator: "")
+      """)
 
     return swiftCode.joined(separator: "\n")
   }
@@ -149,8 +154,9 @@ extension String {
       .replacingOccurrences(of: #"\(line)"#, with: "\(line)")
   }
 
-  /// Returns `self` escaped for Swift multiline string literals, preserving `\(...)` interpolations.
-  func escapedForSwiftMultilineString() -> String {
+  /// Returns `self` escaped for embedding in Swift
+  /// multiline string literals, but preserving `\(...)` interpolations.
+  fileprivate func escapedForSwiftMultilineString() -> String {
     replacingOccurrences(of: #"\"#, with: #"\\"#)
       .replacingOccurrences(of: #"""""#, with: #"\"\"\""#)
       // Undo escaping for interpolations so \(expr) is undisturbed.
