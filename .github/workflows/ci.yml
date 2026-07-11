@@ -15,6 +15,14 @@ jobs:
       matrix:
         os: [macos-15, ubuntu-24.04, windows-2025]
 
+        include:
+          # Disable exporting code coverage by default.
+          - export-coverage: false
+
+          # Enable exporting code coverage in a single configuration.
+          - os: "ubuntu-24.04"
+            export-coverage: true
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -33,7 +41,17 @@ jobs:
           ${{ runner.os }}-spm-
 
     - name: Build
-      run: swift build --build-tests --disable-xctest
+      run: swift build --build-tests --disable-xctest ${{ matrix.export-coverage && '--enable-code-coverage' || '' }}
 
     - name: Run tests
-      run: swift test --skip-update --skip-build --verbose --disable-xctest
+      run: swift test --skip-update --skip-build --verbose --disable-xctest ${{ matrix.export-coverage && '--enable-code-coverage' || '' }}
+
+    - name: Export code coverage
+      if: ${{ matrix.export-coverage }}
+      run: llvm-cov export $(swift build --show-bin-path)/HyloPackageTests.xctest  --format="lcov" --instr-profile $(swift build --show-bin-path)/codecov/default.profdata > info.lcov
+
+    - name: Upload coverage report to Codecov
+      if: ${{ matrix.export-coverage }}
+      uses: codecov/codecov-action@v7
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
