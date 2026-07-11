@@ -48,7 +48,7 @@ jobs:
 
     - name: Export code coverage
       if: ${{ matrix.export-coverage }}
-      run: llvm-cov export $(swift build --show-bin-path)/HyloPackageTests.xctest  --format="lcov" --instr-profile $(swift build --show-bin-path)/codecov/default.profdata > info.lcov
+      run: llvm-cov export $(swift build --show-bin-path)/gyb-swiftPackageTests.xctest  --format="lcov" --instr-profile $(swift build --show-bin-path)/codecov/default.profdata > info.lcov
 
     - name: Upload coverage report to Codecov
       if: ${{ matrix.export-coverage }}
