@@ -19,12 +19,6 @@ struct Lines<Content: StringProtocol>: RandomAccessCollection {
     self.lineBounds = Self.lineBounds(content)
   }
 
-  /// Creates lines from `content` using precomputed `lineBounds`.
-  init(content: Content, lineBounds: [Content.Index]) {
-    self.content = content
-    self.lineBounds = lineBounds
-  }
-
   /// The type of a line (a substring of the content).
   typealias Element = Content.SubSequence
 
